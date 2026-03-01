@@ -26,9 +26,9 @@ func getHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	shortUrl := req.URL.Path[1:]
+	shortURL := req.URL.Path[1:]
 
-	if url, ok := dict[shortUrl]; ok {
+	if url, ok := dict[shortURL]; ok {
 		w.Header().Add("Location", url)
 		w.WriteHeader(http.StatusTemporaryRedirect)
 		return
@@ -50,20 +50,20 @@ func postHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	url := string(body)
-	shortUrl, err := generateShortUrl()
+	shortURL, err := generateShortURL()
 	if err != nil {
 		http.Error(w, "Generate url failed", http.StatusInternalServerError)
 		return
 	}
 
-	dict[shortUrl] = url
+	dict[shortURL] = url
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte("http://" + req.Host + "/" + shortUrl))
+	w.Write([]byte("http://" + req.Host + "/" + shortURL))
 }
 
-func generateShortUrl() (string, error) {
+func generateShortURL() (string, error) {
 	bytes := make([]byte, 6)
 	_, err := rand.Read(bytes)
 	if err != nil {
