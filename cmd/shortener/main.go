@@ -4,20 +4,20 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"io"
+	"log"
 	"net/http"
+
+	"github.com/go-chi/chi/v5"
 )
 
 var dict = make(map[string]string)
 
 func main() {
-	mux := http.NewServeMux()
-	mux.HandleFunc(`/{id}`, getHandler)
-	mux.HandleFunc(`/`, postHandler)
+	r := chi.NewRouter()
+	r.Get("/{id}", getHandler)
+	r.Post("/", postHandler)
 
-	err := http.ListenAndServe(`:8080`, mux)
-	if err != nil {
-		panic(err)
-	}
+	log.Fatal(http.ListenAndServe(":8080", r))
 }
 
 func getHandler(w http.ResponseWriter, req *http.Request) {
