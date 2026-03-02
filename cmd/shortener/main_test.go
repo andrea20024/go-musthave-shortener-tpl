@@ -31,13 +31,13 @@ func Test_getHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			shortUrl, err := generateShortURL()
+			shortURL, err := generateShortURL()
 			if err != nil {
 				return
 			}
 
-			dict[shortUrl] = tt.ref
-			req := httptest.NewRequest(http.MethodGet, "/"+shortUrl, nil)
+			dict[shortURL] = tt.ref
+			req := httptest.NewRequest(http.MethodGet, "/"+shortURL, nil)
 			w := httptest.NewRecorder()
 
 			getHandler(w, req)
