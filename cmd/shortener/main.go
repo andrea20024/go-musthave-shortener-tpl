@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"flag"
 	"io"
 	"log"
 	"net/http"
@@ -14,11 +15,18 @@ import (
 var dict = make(map[string]string)
 
 func main() {
+
+	config := config.InitConfig()
+
+	flag.StringVar(&config.Host, "a", config.Host, "host")
+	flag.StringVar(&config.BaseURL, "b", config.BaseURL, "base url")
+	flag.Parse()
+
 	r := chi.NewRouter()
 	r.Get("/{id}", getHandler)
 	r.Post("/", postHandler)
 
-	log.Fatal(http.ListenAndServe(config.InitConfig().Host, r))
+	log.Fatal(http.ListenAndServe(config.Host, r))
 }
 
 func getHandler(w http.ResponseWriter, req *http.Request) {
@@ -61,7 +69,7 @@ func postHandler(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte(config.InitConfig().BaseURL + "/" + shortURL))
+	w.Write([]byte("http://" + req.Host + "/" + shortURL))
 }
 
 func generateShortURL() (string, error) {
