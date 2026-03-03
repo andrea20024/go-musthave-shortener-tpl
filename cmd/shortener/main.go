@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/andrea20024/go-musthave-shortener-tpl/internal/config"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -17,7 +18,7 @@ func main() {
 	r.Get("/{id}", getHandler)
 	r.Post("/", postHandler)
 
-	log.Fatal(http.ListenAndServe(":8080", r))
+	log.Fatal(http.ListenAndServe(config.InitConfig().Host, r))
 }
 
 func getHandler(w http.ResponseWriter, req *http.Request) {
@@ -60,7 +61,7 @@ func postHandler(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte("http://" + req.Host + "/" + shortURL))
+	w.Write([]byte(config.InitConfig().BaseURL + "/" + shortURL))
 }
 
 func generateShortURL() (string, error) {
