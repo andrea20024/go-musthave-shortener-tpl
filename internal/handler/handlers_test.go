@@ -1,4 +1,4 @@
-package main
+package handlers
 
 import (
 	"bytes"
@@ -7,9 +7,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	storage "github.com/andrea20024/go-musthave-shortener-tpl/internal/repository"
 )
 
-func Test_getHandler(t *testing.T) {
+func Test_GetHandler(t *testing.T) {
 	type params struct {
 		code        int
 		contentType string
@@ -31,16 +33,16 @@ func Test_getHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			shortURL, err := generateShortURL()
+			shortURL, err := GenerateShortURL()
 			if err != nil {
 				return
 			}
 
-			dict[shortURL] = tt.ref
+			storage.Add(shortURL, tt.ref)
 			req := httptest.NewRequest(http.MethodGet, "/"+shortURL, nil)
 			w := httptest.NewRecorder()
 
-			getHandler(w, req)
+			GetHandler(w, req)
 			res := w.Result()
 			defer res.Body.Close()
 
@@ -50,19 +52,21 @@ func Test_getHandler(t *testing.T) {
 	}
 }
 
-func Test_postHandler(t *testing.T) {
+func TestPostHandler(t *testing.T) {
 	type params struct {
 		code        int
 		contentType string
 	}
 	tests := []struct {
-		name   string
-		body   string
-		params params
+		name    string
+		body    string
+		baseURL string
+		params  params
 	}{
 		{
-			name: "test post",
-			body: "https://practicum.yandex.ru",
+			name:    "test post",
+			body:    "https://practicum.yandex.ru",
+			baseURL: "http://localhost:8080",
 			params: params{
 				code:        http.StatusCreated,
 				contentType: "text/plain",
@@ -76,7 +80,7 @@ func Test_postHandler(t *testing.T) {
 			req.Header.Set("Content-Type", "text/plain")
 			w := httptest.NewRecorder()
 
-			postHandler(w, req)
+			PostHandler(w, req, tt.baseURL)
 			res := w.Result()
 			defer res.Body.Close()
 
