@@ -1,8 +1,8 @@
 package config
 
 type Config struct {
-	Host    string
-	BaseURL string
+	Host    string `env:"SERVER_ADDRESS"`
+	BaseURL string `env:"BASE_URL"`
 }
 
 func InitConfig() *Config {
