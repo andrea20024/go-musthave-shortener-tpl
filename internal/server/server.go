@@ -30,7 +30,7 @@ func Start(host string, baseURL string) {
 		handlers.PostHandler(w, r, baseURL)
 	})
 	r.Post("/api/shorten", func(w http.ResponseWriter, r *http.Request) {
-		handlers.JsonHandler(w, r, baseURL)
+		handlers.JSONHandler(w, r, baseURL)
 	})
 
 	log.Fatal(http.ListenAndServe(host, r))

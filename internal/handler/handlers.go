@@ -63,7 +63,7 @@ func PostHandler(w http.ResponseWriter, req *http.Request, BaseURL string) {
 	w.Write([]byte(BaseURL + "/" + shortURL))
 }
 
-func JsonHandler(w http.ResponseWriter, req *http.Request, BaseURL string) {
+func JSONHandler(w http.ResponseWriter, req *http.Request, BaseURL string) {
 	if req.Method != http.MethodPost {
 		http.Error(w, "Only POST method", http.StatusBadRequest)
 		return
