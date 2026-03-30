@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 
+	compress "github.com/andrea20024/go-musthave-shortener-tpl/internal/compress"
 	handlers "github.com/andrea20024/go-musthave-shortener-tpl/internal/handler"
 	logger "github.com/andrea20024/go-musthave-shortener-tpl/internal/logger"
 	"github.com/go-chi/chi/v5"
@@ -23,7 +24,9 @@ func Start(host string, baseURL string) {
 
 	sugar := *logg.Sugar()
 	sugar.Infow("Starting server", "addr", host)
+
 	r.Use(logger.WithLogging)
+	r.Use(compress.GzipHandle)
 
 	r.Get("/{id}", handlers.GetHandler)
 	r.Post("/", func(w http.ResponseWriter, r *http.Request) {
