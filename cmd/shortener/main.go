@@ -14,8 +14,9 @@ func main() {
 
 	flag.StringVar(&config.Host, "a", config.Host, "host")
 	flag.StringVar(&config.BaseURL, "b", config.BaseURL, "base url")
+	flag.StringVar(&config.FilePath, "f", config.FilePath, "file path")
 	flag.Parse()
 	env.Parse(config)
 
-	server.Start(config.Host, config.BaseURL)
+	server.Start(config)
 }

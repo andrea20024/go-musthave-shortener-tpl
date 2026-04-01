@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
+	"time"
 
+	config "github.com/andrea20024/go-musthave-shortener-tpl/internal/config"
 	storage "github.com/andrea20024/go-musthave-shortener-tpl/internal/repository"
 )
 
@@ -37,7 +40,7 @@ func GetHandler(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func PostHandler(w http.ResponseWriter, req *http.Request, BaseURL string) {
+func PostHandler(w http.ResponseWriter, req *http.Request, config *config.Config) {
 	if req.Method != http.MethodPost {
 		http.Error(w, "Only POST method", http.StatusBadRequest)
 		return
@@ -58,12 +61,25 @@ func PostHandler(w http.ResponseWriter, req *http.Request, BaseURL string) {
 
 	storage.Add(shortURL, url)
 
+	producer, err := storage.NewProducer(config.FilePath)
+	if err != nil {
+		http.Error(w, "file error", http.StatusInternalServerError)
+		return
+	}
+	event := GetEnevt(shortURL, url)
+	err = producer.WriteEvent(&event)
+	if err != nil {
+		http.Error(w, "file error", http.StatusInternalServerError)
+		return
+	}
+	defer producer.Close()
+
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte(BaseURL + "/" + shortURL))
+	w.Write([]byte(config.BaseURL + "/" + shortURL))
 }
 
-func JSONHandler(w http.ResponseWriter, req *http.Request, BaseURL string) {
+func JSONHandler(w http.ResponseWriter, req *http.Request, config *config.Config) {
 	if req.Method != http.MethodPost {
 		http.Error(w, "Only POST method", http.StatusBadRequest)
 		return
@@ -90,7 +106,20 @@ func JSONHandler(w http.ResponseWriter, req *http.Request, BaseURL string) {
 
 	storage.Add(shortURL, url)
 
-	res := Output{Result: fmt.Sprintf("%s/%s", BaseURL, shortURL)}
+	producer, err := storage.NewProducer(config.FilePath)
+	if err != nil {
+		http.Error(w, "file error", http.StatusInternalServerError)
+		return
+	}
+	event := GetEnevt(shortURL, url)
+	err = producer.WriteEvent(&event)
+	if err != nil {
+		http.Error(w, "file error", http.StatusInternalServerError)
+		return
+	}
+	defer producer.Close()
+
+	res := Output{Result: fmt.Sprintf("%s/%s", config.BaseURL, shortURL)}
 	resp, err := json.Marshal(res)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -109,4 +138,14 @@ func GenerateShortURL() (string, error) {
 		return "", err
 	}
 	return base64.URLEncoding.EncodeToString(bytes)[:8], nil
+}
+
+func GetEnevt(shortURL string, url string) storage.Event {
+	currentTime := time.Now()
+	intFromTime := currentTime.Unix()
+	return storage.Event{
+		UUID:        strconv.Itoa(int(intFromTime)),
+		ShortURL:    shortURL,
+		OriginalURL: url,
+	}
 }
