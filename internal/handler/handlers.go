@@ -61,18 +61,10 @@ func PostHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 
 	storage.Add(shortURL, url)
 
-	producer, err := storage.NewProducer(config.FilePath)
-	if err != nil {
+	if err = WrtieToFile(config.FilePath, shortURL, url); err != nil {
 		http.Error(w, "file error", http.StatusInternalServerError)
 		return
 	}
-	event := GetEnevt(shortURL, url)
-	err = producer.WriteEvent(&event)
-	if err != nil {
-		http.Error(w, "file error", http.StatusInternalServerError)
-		return
-	}
-	defer producer.Close()
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
@@ -106,18 +98,10 @@ func JSONHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 
 	storage.Add(shortURL, url)
 
-	producer, err := storage.NewProducer(config.FilePath)
-	if err != nil {
+	if err = WrtieToFile(config.FilePath, shortURL, url); err != nil {
 		http.Error(w, "file error", http.StatusInternalServerError)
 		return
 	}
-	event := GetEnevt(shortURL, url)
-	err = producer.WriteEvent(&event)
-	if err != nil {
-		http.Error(w, "file error", http.StatusInternalServerError)
-		return
-	}
-	defer producer.Close()
 
 	res := Output{Result: fmt.Sprintf("%s/%s", config.BaseURL, shortURL)}
 	resp, err := json.Marshal(res)
@@ -148,4 +132,19 @@ func GetEnevt(shortURL string, url string) storage.Event {
 		ShortURL:    shortURL,
 		OriginalURL: url,
 	}
+}
+
+func WrtieToFile(filepath string, shortURL string, url string) error {
+	producer, err := storage.NewProducer(filepath)
+	if err != nil {
+		return err
+	}
+	defer producer.Close()
+
+	event := GetEnevt(shortURL, url)
+	err = producer.WriteEvent(&event)
+	if err != nil {
+		return err
+	}
+	return nil
 }
