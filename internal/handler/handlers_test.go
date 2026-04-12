@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	config "github.com/andrea20024/go-musthave-shortener-tpl/internal/config"
 	storage "github.com/andrea20024/go-musthave-shortener-tpl/internal/repository"
 )
 
@@ -58,15 +59,15 @@ func TestPostHandler(t *testing.T) {
 		contentType string
 	}
 	tests := []struct {
-		name    string
-		body    string
-		baseURL string
-		params  params
+		name   string
+		body   string
+		config config.Config
+		params params
 	}{
 		{
-			name:    "test post",
-			body:    "https://practicum.yandex.ru",
-			baseURL: "http://localhost:8080",
+			name:   "test post",
+			body:   "https://practicum.yandex.ru",
+			config: *config.InitConfig(),
 			params: params{
 				code:        http.StatusCreated,
 				contentType: "text/plain",
@@ -80,7 +81,7 @@ func TestPostHandler(t *testing.T) {
 			req.Header.Set("Content-Type", "text/plain")
 			w := httptest.NewRecorder()
 
-			PostHandler(w, req, tt.baseURL)
+			PostHandler(w, req, &tt.config)
 			res := w.Result()
 			defer res.Body.Close()
 
