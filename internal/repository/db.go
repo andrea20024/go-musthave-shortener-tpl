@@ -14,7 +14,7 @@ func Init(cfg *config.Config) {
 }
 
 func Ping() error {
-	db, err := sql.Open("pgx", conf.Db)
+	db, err := sql.Open("pgx", conf.DB)
 	if err != nil {
 		return err
 	}
