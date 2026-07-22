@@ -22,8 +22,18 @@ func main() {
 		config.BaseURL = "http://" + config.Host
 	}
 	
+	hostFlag := flag.Lookup("a").Value.String()
+	baseURLFlag := flag.Lookup("b").Value.String()
+	
 	env.Parse(config)
 	
+	if hostFlag != config.Host {
+		config.Host = hostFlag
+	}
+	if baseURLFlag != config.BaseURL {
+		config.BaseURL = baseURLFlag
+	}
+
 	if config.BaseURL == "" {
 		config.BaseURL = "http://" + config.Host
 	}
