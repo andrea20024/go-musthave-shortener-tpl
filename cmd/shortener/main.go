@@ -17,6 +17,11 @@ func main() {
 	flag.StringVar(&config.FilePath, "f", config.FilePath, "file path")
 	flag.StringVar(&config.DB, "d", config.DB, "database")
 	flag.Parse()
+	
+	if config.BaseURL == "" {
+		config.BaseURL = "http://" + config.Host
+	}
+	
 	env.Parse(config)
 	
 	if config.BaseURL == "" {
