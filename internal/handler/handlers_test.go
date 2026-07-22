@@ -39,11 +39,12 @@ func Test_GetHandler(t *testing.T) {
 				return
 			}
 
-			storage.Add(shortURL, tt.ref)
+			repo := storage.NewMapRepository()
+			repo.Add(shortURL, tt.ref)
 			req := httptest.NewRequest(http.MethodGet, "/"+shortURL, nil)
 			w := httptest.NewRecorder()
 
-			GetHandler(w, req)
+			GetHandler(w, req, repo)
 			res := w.Result()
 			defer res.Body.Close()
 
@@ -77,11 +78,12 @@ func TestPostHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			repo := storage.NewMapRepository()
 			req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(tt.body))
 			req.Header.Set("Content-Type", "text/plain")
 			w := httptest.NewRecorder()
 
-			PostHandler(w, req, &tt.config)
+			PostHandler(w, req, &tt.config, repo)
 			res := w.Result()
 			defer res.Body.Close()
 

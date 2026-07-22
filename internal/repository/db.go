@@ -3,27 +3,41 @@ package storage
 import (
 	"database/sql"
 
-	"github.com/andrea20024/go-musthave-shortener-tpl/internal/config"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-var conf *config.Config
-
-func Init(cfg *config.Config) {
-	conf = cfg
+type dbRepository struct {
+	db *sql.DB
 }
 
-func Ping() error {
-	db, err := sql.Open("pgx", conf.DB)
-	if err != nil {
-		return err
-	}
-	defer db.Close()
+func (r *dbRepository) Add(key string, url string) {
+	r.db.Exec("INSERT INTO urls (short_url, original_url) VALUES ($1, $2) ON CONFLICT (short_url) DO NOTHING", key, url)
+}
 
-	err = db.Ping()
-	if err != nil {
-		return err
-	}
+func (r *dbRepository) Get(key string) string {
+	var url string
+	r.db.QueryRow("SELECT original_url FROM urls WHERE short_url = $1", key).Scan(&url)
+	return url
+}
 
-	return nil
+func (r *dbRepository) Ping() error {
+	return r.db.Ping()
+}
+
+func Init(conn string) Repository {
+	db, err := sql.Open("pgx", conn)
+	if err != nil {
+		return nil
+	}
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil
+	}
+	db.Exec(`CREATE TABLE IF NOT EXISTS urls (
+		id SERIAL PRIMARY KEY,
+		short_url VARCHAR(255) UNIQUE NOT NULL,
+		original_url TEXT NOT NULL,
+		created_at TIMESTAMPTZ DEFAULT NOW()
+	)`)
+	return &dbRepository{db: db}
 }

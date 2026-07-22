@@ -1,10 +1,11 @@
 package config
 
 type Config struct {
-	Host     string `env:"SERVER_ADDRESS"`
-	BaseURL  string `env:"BASE_URL"`
-	FilePath string `env:"FILE_STORAGE_PATH"`
-	DB       string `env:"DATABASE_DSN"`
+	Host        string `env:"SERVER_ADDRESS"`
+	BaseURL     string `env:"BASE_URL"`
+	FilePath    string `env:"FILE_STORAGE_PATH"`
+	DB          string `env:"DATABASE_DSN"`
+	StorageType string
 }
 
 func InitConfig() *Config {
