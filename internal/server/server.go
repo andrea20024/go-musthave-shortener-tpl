@@ -17,6 +17,8 @@ import (
 func Start(config *config.Config) {
 	r := chi.NewRouter()
 
+	storage.Init(config)
+
 	logg, err := zap.NewDevelopment()
 	if err != nil {
 		panic(err)
@@ -56,6 +58,7 @@ func Start(config *config.Config) {
 	r.Post("/api/shorten", func(w http.ResponseWriter, r *http.Request) {
 		handlers.JSONHandler(w, r, config)
 	})
+	r.Get("/ping", handlers.PingHandler)
 
 	log.Fatal(http.ListenAndServe(config.Host, r))
 }

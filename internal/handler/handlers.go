@@ -115,6 +115,20 @@ func JSONHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 	w.Write(resp)
 }
 
+func PingHandler(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		http.Error(w, "Only GET method", http.StatusBadRequest)
+		return
+	}
+
+	err := storage.Ping()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
 func GenerateShortURL() (string, error) {
 	bytes := make([]byte, 6)
 	_, err := rand.Read(bytes)
