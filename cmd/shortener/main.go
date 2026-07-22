@@ -18,6 +18,10 @@ func main() {
 	flag.StringVar(&config.DB, "d", config.DB, "database")
 	flag.Parse()
 	env.Parse(config)
+	
+	if config.BaseURL == "" {
+		config.BaseURL = "http://" + config.Host
+	}
 
 	server.Start(config)
 }
