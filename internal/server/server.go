@@ -25,17 +25,17 @@ func Start(config *config.Config) {
 		newRepo, err := storage.NewFileRepository(config.FilePath)
 		if err == nil {
 			repo = newRepo
+			config.StoreType = "file"
 		}
 	}
 
-	/*
-		if config.DB != "" {
-			newRepo := storage.Init(config.DB)
-			if newRepo != nil {
-				repo = newRepo
-			}
+	if config.DB != "" {
+		newRepo := storage.Init(config.DB)
+		if newRepo != nil {
+			repo = newRepo
+			config.StoreType = "db"
 		}
-	*/
+	}
 
 	logg, err := zap.NewDevelopment()
 	if err != nil {
@@ -48,7 +48,7 @@ func Start(config *config.Config) {
 	sugar := *logg.Sugar()
 	sugar.Infow("Starting server", "addr", config.Host)
 
-	if config.FilePath != "" {
+	if config.FilePath != "" && config.StoreType != "file" {
 		consumer, err := storage.NewConsumer(config.FilePath)
 		if err != nil {
 			log.Printf("NewConsumer error: %v", err)
