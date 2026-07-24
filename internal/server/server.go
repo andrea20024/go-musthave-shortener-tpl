@@ -32,6 +32,9 @@ func Start(config *config.Config) {
 		newRepo := storage.Init(config.DB)
 		if newRepo != nil {
 			repo = newRepo
+			log.Printf("Using DB repository")
+		} else {
+			log.Printf("DB repository init failed, using fallback")
 		}
 	}
 
@@ -49,20 +52,21 @@ func Start(config *config.Config) {
 	if config.FilePath != "" {
 		consumer, err := storage.NewConsumer(config.FilePath)
 		if err != nil {
-			panic(err)
-		}
-		for {
-			event, err := consumer.ReadEvent()
-			if err != nil {
-				if err == io.EOF {
+			log.Printf("NewConsumer error: %v", err)
+		} else {
+			for {
+				event, err := consumer.ReadEvent()
+				if err != nil {
+					if err == io.EOF {
+						break
+					}
+					continue
+				}
+				if event == nil {
 					break
 				}
-				continue
+				repo.Add(event.ShortURL, event.OriginalURL)
 			}
-			if event == nil {
-				break
-			}
-			repo.Add(event.ShortURL, event.OriginalURL)
 		}
 	}
 
