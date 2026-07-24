@@ -17,7 +17,7 @@ import (
 func Start(config *config.Config) {
 	r := chi.NewRouter()
 
-	storage.Init(config)
+	repo := storage.Init(config.DB)
 
 	logg, err := zap.NewDevelopment()
 	if err != nil {
@@ -45,20 +45,24 @@ func Start(config *config.Config) {
 		if event == nil {
 			break
 		}
-		storage.Add(event.ShortURL, event.OriginalURL)
+		repo.Add(event.ShortURL, event.OriginalURL)
 	}
 
 	r.Use(logger.WithLogging)
 	r.Use(compress.GzipHandle)
 
-	r.Get("/{id}", handlers.GetHandler)
+	r.Get("/{id}", func(w http.ResponseWriter, req *http.Request) {
+		handlers.GetHandler(w, req, repo)
+	})
 	r.Post("/", func(w http.ResponseWriter, r *http.Request) {
-		handlers.PostHandler(w, r, config)
+		handlers.PostHandler(w, r, config, repo)
 	})
 	r.Post("/api/shorten", func(w http.ResponseWriter, r *http.Request) {
-		handlers.JSONHandler(w, r, config)
+		handlers.JSONHandler(w, r, config, repo)
 	})
-	r.Get("/ping", handlers.PingHandler)
+	r.Get("/ping", func(w http.ResponseWriter, req *http.Request) {
+		handlers.PingHandler(w, req, repo)
+	})
 
 	log.Fatal(http.ListenAndServe(config.Host, r))
 }

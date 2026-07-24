@@ -22,7 +22,7 @@ type Output struct {
 	Result string `json:"result"`
 }
 
-func GetHandler(w http.ResponseWriter, req *http.Request) {
+func GetHandler(w http.ResponseWriter, req *http.Request, repo storage.Repository) {
 	if req.Method != http.MethodGet {
 		http.Error(w, "Only GET method", http.StatusBadRequest)
 		return
@@ -30,7 +30,7 @@ func GetHandler(w http.ResponseWriter, req *http.Request) {
 
 	shortURL := req.URL.Path[1:]
 
-	var url = storage.Get(shortURL)
+	url := repo.Get(shortURL)
 	if url != "" {
 		w.Header().Add("Location", url)
 		w.WriteHeader(http.StatusTemporaryRedirect)
@@ -40,7 +40,7 @@ func GetHandler(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func PostHandler(w http.ResponseWriter, req *http.Request, config *config.Config) {
+func PostHandler(w http.ResponseWriter, req *http.Request, config *config.Config, repo storage.Repository) {
 	if req.Method != http.MethodPost {
 		http.Error(w, "Only POST method", http.StatusBadRequest)
 		return
@@ -59,7 +59,7 @@ func PostHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 		return
 	}
 
-	storage.Add(shortURL, url)
+	repo.Add(shortURL, url)
 
 	if err = WrtieToFile(config.FilePath, shortURL, url); err != nil {
 		http.Error(w, "file error", http.StatusInternalServerError)
@@ -71,7 +71,7 @@ func PostHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 	w.Write([]byte(config.BaseURL + "/" + shortURL))
 }
 
-func JSONHandler(w http.ResponseWriter, req *http.Request, config *config.Config) {
+func JSONHandler(w http.ResponseWriter, req *http.Request, config *config.Config, repo storage.Repository) {
 	if req.Method != http.MethodPost {
 		http.Error(w, "Only POST method", http.StatusBadRequest)
 		return
@@ -96,7 +96,7 @@ func JSONHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 		return
 	}
 
-	storage.Add(shortURL, url)
+	repo.Add(shortURL, url)
 
 	if err = WrtieToFile(config.FilePath, shortURL, url); err != nil {
 		http.Error(w, "file error", http.StatusInternalServerError)
@@ -115,13 +115,13 @@ func JSONHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 	w.Write(resp)
 }
 
-func PingHandler(w http.ResponseWriter, req *http.Request) {
+func PingHandler(w http.ResponseWriter, req *http.Request, repo storage.Repository) {
 	if req.Method != http.MethodGet {
 		http.Error(w, "Only GET method", http.StatusBadRequest)
 		return
 	}
 
-	err := storage.Ping()
+	err := repo.Ping()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
