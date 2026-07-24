@@ -22,11 +22,17 @@ func Start(config *config.Config) {
 	repo = storage.NewMapRepository()
 
 	if config.FilePath != "" {
-		repo, _ = storage.NewFileRepository(config.FilePath)
+		newRepo, err := storage.NewFileRepository(config.FilePath)
+		if err == nil {
+			repo = newRepo
+		}
 	}
 
 	if config.DB != "" {
-		repo = storage.Init(config.DB)
+		newRepo := storage.Init(config.DB)
+		if newRepo != nil {
+			repo = newRepo
+		}
 	}
 
 	logg, err := zap.NewDevelopment()
