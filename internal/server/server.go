@@ -28,15 +28,14 @@ func Start(config *config.Config) {
 		}
 	}
 
-	if config.DB != "" {
-		newRepo := storage.Init(config.DB)
-		if newRepo != nil {
-			repo = newRepo
-			log.Printf("Using DB repository")
-		} else {
-			log.Printf("DB repository init failed, using fallback")
+	/*
+		if config.DB != "" {
+			newRepo := storage.Init(config.DB)
+			if newRepo != nil {
+				repo = newRepo
+			}
 		}
-	}
+	*/
 
 	logg, err := zap.NewDevelopment()
 	if err != nil {
