@@ -17,9 +17,16 @@ import (
 func Start(config *config.Config) {
 	r := chi.NewRouter()
 
-	repo := storage.Init(config.DB)
-	if repo == nil {
-		repo = storage.NewMapRepository()
+	var repo storage.Repository
+
+	repo = storage.NewMapRepository()
+
+	if config.FilePath != "" {
+		repo, _ = storage.NewFileRepository(config.FilePath)
+	}
+
+	if config.DB != "" {
+		repo = storage.Init(config.DB)
 	}
 
 	logg, err := zap.NewDevelopment()
@@ -33,22 +40,24 @@ func Start(config *config.Config) {
 	sugar := *logg.Sugar()
 	sugar.Infow("Starting server", "addr", config.Host)
 
-	consumer, err := storage.NewConsumer(config.FilePath)
-	if err != nil {
-		panic(err)
-	}
-	for {
-		event, err := consumer.ReadEvent()
+	if config.FilePath != "" {
+		consumer, err := storage.NewConsumer(config.FilePath)
 		if err != nil {
-			if err == io.EOF {
+			panic(err)
+		}
+		for {
+			event, err := consumer.ReadEvent()
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				continue
+			}
+			if event == nil {
 				break
 			}
-			continue
+			repo.Add(event.ShortURL, event.OriginalURL)
 		}
-		if event == nil {
-			break
-		}
-		repo.Add(event.ShortURL, event.OriginalURL)
 	}
 
 	r.Use(logger.WithLogging)
