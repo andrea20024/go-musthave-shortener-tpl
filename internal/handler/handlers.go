@@ -20,6 +20,16 @@ type Output struct {
 	Result string `json:"result"`
 }
 
+type BatchInput struct {
+	CorrelationID string `json:"correlation_id"`
+	OriginalURL   string `json:"original_url"`
+}
+
+type BatchOutput struct {
+	CorrelationID string `json:"correlation_id"`
+	ShortURL      string `json:"short_url"`
+}
+
 func GetHandler(w http.ResponseWriter, req *http.Request, repo storage.Repository) {
 	if req.Method != http.MethodGet {
 		http.Error(w, "Only GET method", http.StatusBadRequest)
@@ -124,4 +134,55 @@ func GenerateShortURL() (string, error) {
 		return "", err
 	}
 	return base64.URLEncoding.EncodeToString(bytes)[:8], nil
+}
+
+func BatchHandler(w http.ResponseWriter, req *http.Request, config *config.Config, repo storage.Repository) {
+	if req.Method != http.MethodPost {
+		http.Error(w, "Only POST method", http.StatusBadRequest)
+		return
+	}
+
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		http.Error(w, "Invalid body", http.StatusBadRequest)
+		return
+	}
+
+	var batchInputs []BatchInput
+	if err = json.Unmarshal(body, &batchInputs); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if len(batchInputs) == 0 {
+		http.Error(w, "Empty batch", http.StatusBadRequest)
+		return
+	}
+
+	var results []BatchOutput
+	for _, input := range batchInputs {
+		shortURL, err := GenerateShortURL()
+		if err != nil {
+			http.Error(w, "Generate url failed", http.StatusInternalServerError)
+			return
+		}
+
+		repo.Add(shortURL, input.OriginalURL)
+
+		result := BatchOutput{
+			CorrelationID: input.CorrelationID,
+			ShortURL:      fmt.Sprintf("%s/%s", config.BaseURL, shortURL),
+		}
+		results = append(results, result)
+	}
+
+	resp, err := json.Marshal(results)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	w.Write(resp)
 }

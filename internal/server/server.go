@@ -84,6 +84,9 @@ func Start(config *config.Config) {
 	r.Get("/ping", func(w http.ResponseWriter, req *http.Request) {
 		handlers.PingHandler(w, req, repo)
 	})
+	r.Post("/api/shorten/batch", func(w http.ResponseWriter, r *http.Request) {
+		handlers.BatchHandler(w, r, config, repo)
+	})
 
 	log.Fatal(http.ListenAndServe(config.Host, r))
 }
