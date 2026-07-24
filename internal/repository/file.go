@@ -90,6 +90,16 @@ func (r *FileRepository) Add(key string, url string) {
 	}
 }
 
+func (r *FileRepository) AddBatch(urls map[string]string) {
+	for key, url := range urls {
+		r.dict[key] = url
+		event := Event{ShortURL: key, OriginalURL: url}
+		if err := r.writeFile(&event); err != nil {
+			continue
+		}
+	}
+}
+
 func (r *FileRepository) Get(key string) string {
 	return r.dict[key]
 }

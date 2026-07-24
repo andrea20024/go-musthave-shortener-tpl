@@ -159,7 +159,8 @@ func BatchHandler(w http.ResponseWriter, req *http.Request, config *config.Confi
 		return
 	}
 
-	var results []BatchOutput
+	results := make([]BatchOutput, 0, len(batchInputs))
+	urls := make(map[string]string)
 	for _, input := range batchInputs {
 		shortURL, err := GenerateShortURL()
 		if err != nil {
@@ -167,7 +168,7 @@ func BatchHandler(w http.ResponseWriter, req *http.Request, config *config.Confi
 			return
 		}
 
-		repo.Add(shortURL, input.OriginalURL)
+		urls[shortURL] = input.OriginalURL
 
 		result := BatchOutput{
 			CorrelationID: input.CorrelationID,
@@ -175,6 +176,8 @@ func BatchHandler(w http.ResponseWriter, req *http.Request, config *config.Confi
 		}
 		results = append(results, result)
 	}
+
+	repo.AddBatch(urls)
 
 	resp, err := json.Marshal(results)
 	if err != nil {

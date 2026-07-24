@@ -24,6 +24,33 @@ func (r *dbRepository) Ping() error {
 	return r.db.Ping()
 }
 
+func (r *dbRepository) AddBatch(urls map[string]string) {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	stmt, err := tx.Prepare("INSERT INTO urls (short_url, original_url) VALUES ($1, $2) ON CONFLICT (short_url) DO NOTHING")
+	if err != nil {
+		return
+	}
+	defer stmt.Close()
+
+	for key, url := range urls {
+		_, err = stmt.Exec(key, url)
+		if err != nil {
+			return
+		}
+	}
+
+	tx.Commit()
+}
+
 func Init(conn string) Repository {
 	db, err := sql.Open("pgx", conn)
 	if err != nil {

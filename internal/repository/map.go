@@ -12,6 +12,12 @@ func (r *MapRepository) Add(key string, url string) {
 	r.dict[key] = url
 }
 
+func (r *MapRepository) AddBatch(urls map[string]string) {
+	for key, url := range urls {
+		r.dict[key] = url
+	}
+}
+
 func (r *MapRepository) Get(key string) string {
 	val, ok := r.dict[key]
 	if ok {
