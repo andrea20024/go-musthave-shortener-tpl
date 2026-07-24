@@ -18,6 +18,9 @@ func Start(config *config.Config) {
 	r := chi.NewRouter()
 
 	repo := storage.Init(config.DB)
+	if repo == nil {
+		repo = storage.NewMapRepository()
+	}
 
 	logg, err := zap.NewDevelopment()
 	if err != nil {
