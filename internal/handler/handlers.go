@@ -61,13 +61,27 @@ func PostHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 	}
 
 	url := string(body)
+
 	shortURL, err := GenerateShortURL()
 	if err != nil {
 		http.Error(w, "Generate url failed", http.StatusInternalServerError)
 		return
 	}
 
-	repo.Add(shortURL, url)
+	err = repo.Add(shortURL, url)
+	if err != nil {
+		if repo.IsDuplicateError(err) {
+			existingKey := repo.GetKeyByURL(url)
+			if existingKey != "" {
+				w.Header().Set("Content-Type", "text/plain")
+				w.WriteHeader(http.StatusConflict)
+				w.Write([]byte(config.BaseURL + "/" + existingKey))
+				return
+			}
+		}
+		http.Error(w, "Add url failed", http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
@@ -93,13 +107,33 @@ func JSONHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 	}
 
 	url := inputBody.URL
+
 	shortURL, err := GenerateShortURL()
 	if err != nil {
 		http.Error(w, "Generate url failed", http.StatusInternalServerError)
 		return
 	}
 
-	repo.Add(shortURL, url)
+	err = repo.Add(shortURL, url)
+	if err != nil {
+		if repo.IsDuplicateError(err) {
+			existingKey := repo.GetKeyByURL(url)
+			if existingKey != "" {
+				res := Output{Result: fmt.Sprintf("%s/%s", config.BaseURL, existingKey)}
+				resp, err := json.Marshal(res)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusConflict)
+				w.Write(resp)
+				return
+			}
+		}
+		http.Error(w, "Add url failed", http.StatusInternalServerError)
+		return
+	}
 
 	res := Output{Result: fmt.Sprintf("%s/%s", config.BaseURL, shortURL)}
 	resp, err := json.Marshal(res)

@@ -3,6 +3,7 @@ package storage
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 )
@@ -82,26 +83,45 @@ func (r *FileRepository) loadEvents() ([]Event, error) {
 	return events, scanner.Err()
 }
 
-func (r *FileRepository) Add(key string, url string) {
+func (r *FileRepository) Add(key string, url string) error {
+	existingKey := r.GetKeyByURL(url)
+	if existingKey != "" {
+		return &DuplicateError{key: existingKey, url: url}
+	}
 	r.dict[key] = url
 	event := Event{ShortURL: key, OriginalURL: url}
 	if err := r.writeFile(&event); err != nil {
-		return
+		return err
 	}
+	return nil
 }
 
-func (r *FileRepository) AddBatch(urls map[string]string) {
+func (r *FileRepository) AddBatch(urls map[string]string) error {
 	for key, url := range urls {
+		existingKey := r.GetKeyByURL(url)
+		if existingKey != "" {
+			return &DuplicateError{key: existingKey, url: url}
+		}
 		r.dict[key] = url
 		event := Event{ShortURL: key, OriginalURL: url}
 		if err := r.writeFile(&event); err != nil {
-			continue
+			return err
 		}
 	}
+	return nil
 }
 
 func (r *FileRepository) Get(key string) string {
 	return r.dict[key]
+}
+
+func (r *FileRepository) GetKeyByURL(url string) string {
+	for key, val := range r.dict {
+		if val == url {
+			return key
+		}
+	}
+	return ""
 }
 
 func (r *FileRepository) GetDict() map[string]string {
@@ -115,6 +135,11 @@ func (r *FileRepository) Ping() error {
 	}
 	file.Close()
 	return nil
+}
+
+func (r *FileRepository) IsDuplicateError(err error) bool {
+	var dupErr *DuplicateError
+	return errors.As(err, &dupErr) && dupErr.Error() == "duplicate"
 }
 
 func (r *FileRepository) writeFile(event *Event) error {
