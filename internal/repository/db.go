@@ -109,7 +109,7 @@ func Init(conn string) Repository {
 	}
 
 	m, err := migrate.NewWithDatabaseInstance(
-		"file://../../migrations",
+		"file://migrations",
 		"postgres",
 		driver,
 	)
