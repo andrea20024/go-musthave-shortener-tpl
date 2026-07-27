@@ -4,6 +4,9 @@ import (
 	"database/sql"
 	"errors"
 
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -98,11 +101,27 @@ func Init(conn string) Repository {
 		db.Close()
 		return nil
 	}
-	db.Exec(`CREATE TABLE IF NOT EXISTS urls (
-		id SERIAL PRIMARY KEY,
-		short_url VARCHAR(255) UNIQUE NOT NULL,
-		original_url TEXT NOT NULL UNIQUE,
-		created_at TIMESTAMPTZ DEFAULT NOW()
-	)`)
+
+	driver, err := postgres.WithInstance(db, &postgres.Config{})
+	if err != nil {
+		db.Close()
+		return nil
+	}
+
+	m, err := migrate.NewWithDatabaseInstance(
+		"file://../../migrations",
+		"postgres",
+		driver,
+	)
+	if err != nil {
+		db.Close()
+		return nil
+	}
+
+	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+		db.Close()
+		return nil
+	}
+
 	return &dbRepository{db: db}
 }
