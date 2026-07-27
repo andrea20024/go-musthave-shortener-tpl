@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 )
@@ -84,8 +85,8 @@ func (r *FileRepository) loadEvents() ([]Event, error) {
 }
 
 func (r *FileRepository) Add(key string, url string) error {
-	existingKey := r.GetKeyByURL(url)
-	if existingKey != "" {
+	existingKey, err := r.GetKeyByURL(url)
+	if err == nil && existingKey != "" {
 		return &DuplicateError{key: existingKey, url: url}
 	}
 	r.dict[key] = url
@@ -98,8 +99,8 @@ func (r *FileRepository) Add(key string, url string) error {
 
 func (r *FileRepository) AddBatch(urls map[string]string) error {
 	for key, url := range urls {
-		existingKey := r.GetKeyByURL(url)
-		if existingKey != "" {
+		existingKey, err := r.GetKeyByURL(url)
+		if err == nil && existingKey != "" {
 			return &DuplicateError{key: existingKey, url: url}
 		}
 		r.dict[key] = url
@@ -111,17 +112,21 @@ func (r *FileRepository) AddBatch(urls map[string]string) error {
 	return nil
 }
 
-func (r *FileRepository) Get(key string) string {
-	return r.dict[key]
+func (r *FileRepository) Get(key string) (string, error) {
+	val, ok := r.dict[key]
+	if ok {
+		return val, nil
+	}
+	return "", fmt.Errorf("key not found: %s", key)
 }
 
-func (r *FileRepository) GetKeyByURL(url string) string {
+func (r *FileRepository) GetKeyByURL(url string) (string, error) {
 	for key, val := range r.dict {
 		if val == url {
-			return key
+			return key, nil
 		}
 	}
-	return ""
+	return "", fmt.Errorf("url not found: %s", url)
 }
 
 func (r *FileRepository) GetDict() map[string]string {

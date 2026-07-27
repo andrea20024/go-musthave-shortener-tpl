@@ -28,16 +28,16 @@ func (r *dbRepository) Add(key string, url string) error {
 	return nil
 }
 
-func (r *dbRepository) Get(key string) string {
+func (r *dbRepository) Get(key string) (string, error) {
 	var url string
-	r.db.QueryRow("SELECT original_url FROM urls WHERE short_url = $1", key).Scan(&url)
-	return url
+	err := r.db.QueryRow("SELECT original_url FROM urls WHERE short_url = $1", key).Scan(&url)
+	return url, err
 }
 
-func (r *dbRepository) GetKeyByURL(url string) string {
+func (r *dbRepository) GetKeyByURL(url string) (string, error) {
 	var key string
-	r.db.QueryRow("SELECT short_url FROM urls WHERE original_url = $1", url).Scan(&key)
-	return key
+	err := r.db.QueryRow("SELECT short_url FROM urls WHERE original_url = $1", url).Scan(&key)
+	return key, err
 }
 
 func (r *dbRepository) Ping() error {
@@ -66,7 +66,10 @@ func (r *dbRepository) AddBatch(urls map[string]string) error {
 		if err != nil {
 			return err
 		}
-		rows, _ := result.RowsAffected()
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
 		if rows == 0 {
 			return &pgconn.PgError{Code: pgerrcode.UniqueViolation}
 		}

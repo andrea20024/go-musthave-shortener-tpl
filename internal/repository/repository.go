@@ -3,8 +3,8 @@ package storage
 type Repository interface {
 	Add(key string, url string) error
 	AddBatch(urls map[string]string) error
-	Get(key string) string
-	GetKeyByURL(url string) string
+	Get(key string) (string, error)
+	GetKeyByURL(url string) (string, error)
 	Ping() error
 	IsDuplicateError(err error) bool
 }

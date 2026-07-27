@@ -38,14 +38,13 @@ func GetHandler(w http.ResponseWriter, req *http.Request, repo storage.Repositor
 
 	shortURL := req.URL.Path[1:]
 
-	var url = repo.Get(shortURL)
-	if url != "" {
-		w.Header().Add("Location", url)
-		w.WriteHeader(http.StatusTemporaryRedirect)
-		return
-	} else {
+	url, err := repo.Get(shortURL)
+	if err != nil {
 		http.Error(w, "Url not found!", http.StatusBadRequest)
+		return
 	}
+	w.Header().Add("Location", url)
+	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
 func PostHandler(w http.ResponseWriter, req *http.Request, config *config.Config, repo storage.Repository) {
@@ -71,8 +70,8 @@ func PostHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 	err = repo.Add(shortURL, url)
 	if err != nil {
 		if repo.IsDuplicateError(err) {
-			existingKey := repo.GetKeyByURL(url)
-			if existingKey != "" {
+			existingKey, err := repo.GetKeyByURL(url)
+			if err == nil && existingKey != "" {
 				w.Header().Set("Content-Type", "text/plain")
 				w.WriteHeader(http.StatusConflict)
 				w.Write([]byte(config.BaseURL + "/" + existingKey))
@@ -117,8 +116,8 @@ func JSONHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 	err = repo.Add(shortURL, url)
 	if err != nil {
 		if repo.IsDuplicateError(err) {
-			existingKey := repo.GetKeyByURL(url)
-			if existingKey != "" {
+			existingKey, err := repo.GetKeyByURL(url)
+			if err == nil && existingKey != "" {
 				res := Output{Result: fmt.Sprintf("%s/%s", config.BaseURL, existingKey)}
 				resp, err := json.Marshal(res)
 				if err != nil {
@@ -211,7 +210,15 @@ func BatchHandler(w http.ResponseWriter, req *http.Request, config *config.Confi
 		results = append(results, result)
 	}
 
-	repo.AddBatch(urls)
+	err = repo.AddBatch(urls)
+	if err != nil {
+		if repo.IsDuplicateError(err) {
+			http.Error(w, "Duplicate URL in batch", http.StatusConflict)
+			return
+		}
+		http.Error(w, "Add batch failed", http.StatusInternalServerError)
+		return
+	}
 
 	resp, err := json.Marshal(results)
 	if err != nil {

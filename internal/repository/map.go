@@ -1,6 +1,9 @@
 package storage
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 type MapRepository struct {
 	dict map[string]string
@@ -11,8 +14,8 @@ func NewMapRepository() *MapRepository {
 }
 
 func (r *MapRepository) Add(key string, url string) error {
-	existingKey := r.GetKeyByURL(url)
-	if existingKey != "" {
+	existingKey, err := r.GetKeyByURL(url)
+	if err == nil && existingKey != "" {
 		return &DuplicateError{key: existingKey, url: url}
 	}
 	r.dict[key] = url
@@ -21,8 +24,8 @@ func (r *MapRepository) Add(key string, url string) error {
 
 func (r *MapRepository) AddBatch(urls map[string]string) error {
 	for key, url := range urls {
-		existingKey := r.GetKeyByURL(url)
-		if existingKey != "" {
+		existingKey, err := r.GetKeyByURL(url)
+		if err == nil && existingKey != "" {
 			return &DuplicateError{key: existingKey, url: url}
 		}
 		r.dict[key] = url
@@ -30,21 +33,21 @@ func (r *MapRepository) AddBatch(urls map[string]string) error {
 	return nil
 }
 
-func (r *MapRepository) Get(key string) string {
+func (r *MapRepository) Get(key string) (string, error) {
 	val, ok := r.dict[key]
 	if ok {
-		return val
+		return val, nil
 	}
-	return ""
+	return "", fmt.Errorf("key not found: %s", key)
 }
 
-func (r *MapRepository) GetKeyByURL(url string) string {
+func (r *MapRepository) GetKeyByURL(url string) (string, error) {
 	for key, val := range r.dict {
 		if val == url {
-			return key
+			return key, nil
 		}
 	}
-	return ""
+	return "", fmt.Errorf("url not found: %s", url)
 }
 
 func (r *MapRepository) Ping() error {
