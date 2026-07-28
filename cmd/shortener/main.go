@@ -15,6 +15,7 @@ func main() {
 	flag.StringVar(&config.Host, "a", config.Host, "host")
 	flag.StringVar(&config.BaseURL, "b", config.BaseURL, "base url")
 	flag.StringVar(&config.FilePath, "f", config.FilePath, "file path")
+	flag.StringVar(&config.DB, "d", config.DB, "database")
 	flag.Parse()
 	env.Parse(config)
 

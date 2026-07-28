@@ -17,6 +17,26 @@ import (
 func Start(config *config.Config) {
 	r := chi.NewRouter()
 
+	var repo storage.Repository
+
+	repo = storage.NewMapRepository()
+
+	if config.FilePath != "" {
+		newRepo, err := storage.NewFileRepository(config.FilePath)
+		if err == nil {
+			repo = newRepo
+			config.StoreType = "file"
+		}
+	}
+
+	if config.DB != "" {
+		newRepo := storage.Init(config.DB)
+		if newRepo != nil {
+			repo = newRepo
+			config.StoreType = "db"
+		}
+	}
+
 	logg, err := zap.NewDevelopment()
 	if err != nil {
 		panic(err)
@@ -28,33 +48,44 @@ func Start(config *config.Config) {
 	sugar := *logg.Sugar()
 	sugar.Infow("Starting server", "addr", config.Host)
 
-	consumer, err := storage.NewConsumer(config.FilePath)
-	if err != nil {
-		panic(err)
-	}
-	for {
-		event, err := consumer.ReadEvent()
+	if config.FilePath != "" && config.StoreType != "file" {
+		consumer, err := storage.NewConsumer(config.FilePath)
 		if err != nil {
-			if err == io.EOF {
-				break
+			log.Printf("NewConsumer error: %v", err)
+		} else {
+			for {
+				event, err := consumer.ReadEvent()
+				if err != nil {
+					if err == io.EOF {
+						break
+					}
+					continue
+				}
+				if event == nil {
+					break
+				}
+				repo.Add(event.ShortURL, event.OriginalURL)
 			}
-			continue
 		}
-		if event == nil {
-			break
-		}
-		storage.Add(event.ShortURL, event.OriginalURL)
 	}
 
 	r.Use(logger.WithLogging)
 	r.Use(compress.GzipHandle)
 
-	r.Get("/{id}", handlers.GetHandler)
+	r.Get("/{id}", func(w http.ResponseWriter, req *http.Request) {
+		handlers.GetHandler(w, req, repo)
+	})
 	r.Post("/", func(w http.ResponseWriter, r *http.Request) {
-		handlers.PostHandler(w, r, config)
+		handlers.PostHandler(w, r, config, repo)
 	})
 	r.Post("/api/shorten", func(w http.ResponseWriter, r *http.Request) {
-		handlers.JSONHandler(w, r, config)
+		handlers.JSONHandler(w, r, config, repo)
+	})
+	r.Get("/ping", func(w http.ResponseWriter, req *http.Request) {
+		handlers.PingHandler(w, req, repo)
+	})
+	r.Post("/api/shorten/batch", func(w http.ResponseWriter, r *http.Request) {
+		handlers.BatchHandler(w, r, config, repo)
 	})
 
 	log.Fatal(http.ListenAndServe(config.Host, r))

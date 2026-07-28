@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
-	"time"
 
 	config "github.com/andrea20024/go-musthave-shortener-tpl/internal/config"
 	storage "github.com/andrea20024/go-musthave-shortener-tpl/internal/repository"
@@ -22,7 +20,17 @@ type Output struct {
 	Result string `json:"result"`
 }
 
-func GetHandler(w http.ResponseWriter, req *http.Request) {
+type BatchInput struct {
+	CorrelationID string `json:"correlation_id"`
+	OriginalURL   string `json:"original_url"`
+}
+
+type BatchOutput struct {
+	CorrelationID string `json:"correlation_id"`
+	ShortURL      string `json:"short_url"`
+}
+
+func GetHandler(w http.ResponseWriter, req *http.Request, repo storage.Repository) {
 	if req.Method != http.MethodGet {
 		http.Error(w, "Only GET method", http.StatusBadRequest)
 		return
@@ -30,17 +38,16 @@ func GetHandler(w http.ResponseWriter, req *http.Request) {
 
 	shortURL := req.URL.Path[1:]
 
-	var url = storage.Get(shortURL)
-	if url != "" {
-		w.Header().Add("Location", url)
-		w.WriteHeader(http.StatusTemporaryRedirect)
-		return
-	} else {
+	url, err := repo.Get(shortURL)
+	if err != nil {
 		http.Error(w, "Url not found!", http.StatusBadRequest)
+		return
 	}
+	w.Header().Add("Location", url)
+	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
-func PostHandler(w http.ResponseWriter, req *http.Request, config *config.Config) {
+func PostHandler(w http.ResponseWriter, req *http.Request, config *config.Config, repo storage.Repository) {
 	if req.Method != http.MethodPost {
 		http.Error(w, "Only POST method", http.StatusBadRequest)
 		return
@@ -53,16 +60,25 @@ func PostHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 	}
 
 	url := string(body)
+
 	shortURL, err := GenerateShortURL()
 	if err != nil {
 		http.Error(w, "Generate url failed", http.StatusInternalServerError)
 		return
 	}
 
-	storage.Add(shortURL, url)
-
-	if err = WrtieToFile(config.FilePath, shortURL, url); err != nil {
-		http.Error(w, "file error", http.StatusInternalServerError)
+	err = repo.Add(shortURL, url)
+	if err != nil {
+		if repo.IsDuplicateError(err) {
+			existingKey, err := repo.GetKeyByURL(url)
+			if err == nil && existingKey != "" {
+				w.Header().Set("Content-Type", "text/plain")
+				w.WriteHeader(http.StatusConflict)
+				w.Write([]byte(config.BaseURL + "/" + existingKey))
+				return
+			}
+		}
+		http.Error(w, "Add url failed", http.StatusInternalServerError)
 		return
 	}
 
@@ -71,7 +87,7 @@ func PostHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 	w.Write([]byte(config.BaseURL + "/" + shortURL))
 }
 
-func JSONHandler(w http.ResponseWriter, req *http.Request, config *config.Config) {
+func JSONHandler(w http.ResponseWriter, req *http.Request, config *config.Config, repo storage.Repository) {
 	if req.Method != http.MethodPost {
 		http.Error(w, "Only POST method", http.StatusBadRequest)
 		return
@@ -90,16 +106,31 @@ func JSONHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 	}
 
 	url := inputBody.URL
+
 	shortURL, err := GenerateShortURL()
 	if err != nil {
 		http.Error(w, "Generate url failed", http.StatusInternalServerError)
 		return
 	}
 
-	storage.Add(shortURL, url)
-
-	if err = WrtieToFile(config.FilePath, shortURL, url); err != nil {
-		http.Error(w, "file error", http.StatusInternalServerError)
+	err = repo.Add(shortURL, url)
+	if err != nil {
+		if repo.IsDuplicateError(err) {
+			existingKey, err := repo.GetKeyByURL(url)
+			if err == nil && existingKey != "" {
+				res := Output{Result: fmt.Sprintf("%s/%s", config.BaseURL, existingKey)}
+				resp, err := json.Marshal(res)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusConflict)
+				w.Write(resp)
+				return
+			}
+		}
+		http.Error(w, "Add url failed", http.StatusInternalServerError)
 		return
 	}
 
@@ -115,6 +146,20 @@ func JSONHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 	w.Write(resp)
 }
 
+func PingHandler(w http.ResponseWriter, req *http.Request, repo storage.Repository) {
+	if req.Method != http.MethodGet {
+		http.Error(w, "Only GET method", http.StatusBadRequest)
+		return
+	}
+
+	err := repo.Ping()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
 func GenerateShortURL() (string, error) {
 	bytes := make([]byte, 6)
 	_, err := rand.Read(bytes)
@@ -124,27 +169,64 @@ func GenerateShortURL() (string, error) {
 	return base64.URLEncoding.EncodeToString(bytes)[:8], nil
 }
 
-func GetEnevt(shortURL string, url string) storage.Event {
-	currentTime := time.Now()
-	intFromTime := currentTime.Unix()
-	return storage.Event{
-		UUID:        strconv.Itoa(int(intFromTime)),
-		ShortURL:    shortURL,
-		OriginalURL: url,
+func BatchHandler(w http.ResponseWriter, req *http.Request, config *config.Config, repo storage.Repository) {
+	if req.Method != http.MethodPost {
+		http.Error(w, "Only POST method", http.StatusBadRequest)
+		return
 	}
-}
 
-func WrtieToFile(filepath string, shortURL string, url string) error {
-	producer, err := storage.NewProducer(filepath)
+	body, err := io.ReadAll(req.Body)
 	if err != nil {
-		return err
+		http.Error(w, "Invalid body", http.StatusBadRequest)
+		return
 	}
-	defer producer.Close()
 
-	event := GetEnevt(shortURL, url)
-	err = producer.WriteEvent(&event)
-	if err != nil {
-		return err
+	var batchInputs []BatchInput
+	if err = json.Unmarshal(body, &batchInputs); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
-	return nil
+
+	if len(batchInputs) == 0 {
+		http.Error(w, "Empty batch", http.StatusBadRequest)
+		return
+	}
+
+	results := make([]BatchOutput, 0, len(batchInputs))
+	urls := make(map[string]string)
+	for _, input := range batchInputs {
+		shortURL, err := GenerateShortURL()
+		if err != nil {
+			http.Error(w, "Generate url failed", http.StatusInternalServerError)
+			return
+		}
+
+		urls[shortURL] = input.OriginalURL
+
+		result := BatchOutput{
+			CorrelationID: input.CorrelationID,
+			ShortURL:      fmt.Sprintf("%s/%s", config.BaseURL, shortURL),
+		}
+		results = append(results, result)
+	}
+
+	err = repo.AddBatch(urls)
+	if err != nil {
+		if repo.IsDuplicateError(err) {
+			http.Error(w, "Duplicate URL in batch", http.StatusConflict)
+			return
+		}
+		http.Error(w, "Add batch failed", http.StatusInternalServerError)
+		return
+	}
+
+	resp, err := json.Marshal(results)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	w.Write(resp)
 }
