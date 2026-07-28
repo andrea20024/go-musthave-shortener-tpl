@@ -18,6 +18,7 @@ type Event struct {
 type FileRepository struct {
 	filename string
 	dict     map[string]string
+	userUrls map[string]map[string]string
 }
 
 type Consumer struct {
@@ -53,7 +54,7 @@ func (c *Consumer) Close() error {
 }
 
 func NewFileRepository(filename string) (*FileRepository, error) {
-	repo := &FileRepository{filename: filename, dict: make(map[string]string)}
+	repo := &FileRepository{filename: filename, dict: make(map[string]string), userUrls: make(map[string]map[string]string)}
 	events, err := repo.loadEvents()
 	if err != nil {
 		return nil, err
@@ -84,12 +85,16 @@ func (r *FileRepository) loadEvents() ([]Event, error) {
 	return events, scanner.Err()
 }
 
-func (r *FileRepository) Add(key string, url string) error {
+func (r *FileRepository) Add(key string, url string, userID string) error {
 	existingKey, err := r.GetKeyByURL(url)
 	if err == nil && existingKey != "" {
 		return &DuplicateError{key: existingKey, url: url}
 	}
 	r.dict[key] = url
+	if r.userUrls[userID] == nil {
+		r.userUrls[userID] = make(map[string]string)
+	}
+	r.userUrls[userID][key] = url
 	event := Event{ShortURL: key, OriginalURL: url}
 	if err := r.writeFile(&event); err != nil {
 		return err
@@ -97,13 +102,17 @@ func (r *FileRepository) Add(key string, url string) error {
 	return nil
 }
 
-func (r *FileRepository) AddBatch(urls map[string]string) error {
+func (r *FileRepository) AddBatch(urls map[string]string, userID string) error {
 	for key, url := range urls {
 		existingKey, err := r.GetKeyByURL(url)
 		if err == nil && existingKey != "" {
 			return &DuplicateError{key: existingKey, url: url}
 		}
 		r.dict[key] = url
+		if r.userUrls[userID] == nil {
+			r.userUrls[userID] = make(map[string]string)
+		}
+		r.userUrls[userID][key] = url
 		event := Event{ShortURL: key, OriginalURL: url}
 		if err := r.writeFile(&event); err != nil {
 			return err
@@ -127,6 +136,17 @@ func (r *FileRepository) GetKeyByURL(url string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("url not found: %s", url)
+}
+
+func (r *FileRepository) GetUserURLs(userID string) ([]UserURL, error) {
+	urls := make([]UserURL, 0)
+	for key, orig := range r.userUrls[userID] {
+		urls = append(urls, UserURL{
+			ShortURL:    key,
+			OriginalURL: orig,
+		})
+	}
+	return urls, nil
 }
 
 func (r *FileRepository) GetDict() map[string]string {

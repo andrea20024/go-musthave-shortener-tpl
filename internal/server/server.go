@@ -9,6 +9,7 @@ import (
 	config "github.com/andrea20024/go-musthave-shortener-tpl/internal/config"
 	handlers "github.com/andrea20024/go-musthave-shortener-tpl/internal/handler"
 	logger "github.com/andrea20024/go-musthave-shortener-tpl/internal/logger"
+	auth "github.com/andrea20024/go-musthave-shortener-tpl/internal/auth"
 	storage "github.com/andrea20024/go-musthave-shortener-tpl/internal/repository"
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
@@ -16,6 +17,8 @@ import (
 
 func Start(config *config.Config) {
 	r := chi.NewRouter()
+
+	auth.Init(config.AuthSecret)
 
 	var repo storage.Repository
 
@@ -64,13 +67,14 @@ func Start(config *config.Config) {
 				if event == nil {
 					break
 				}
-				repo.Add(event.ShortURL, event.OriginalURL)
+				repo.Add(event.ShortURL, event.OriginalURL, "")
 			}
 		}
 	}
 
 	r.Use(logger.WithLogging)
 	r.Use(compress.GzipHandle)
+	r.Use(auth.CookieMiddleware)
 
 	r.Get("/{id}", func(w http.ResponseWriter, req *http.Request) {
 		handlers.GetHandler(w, req, repo)
@@ -86,6 +90,9 @@ func Start(config *config.Config) {
 	})
 	r.Post("/api/shorten/batch", func(w http.ResponseWriter, r *http.Request) {
 		handlers.BatchHandler(w, r, config, repo)
+	})
+	r.Get("/api/user/urls", func(w http.ResponseWriter, r *http.Request) {
+		handlers.GetURLByUserHandler(w, r, config, repo)
 	})
 
 	log.Fatal(http.ListenAndServe(config.Host, r))

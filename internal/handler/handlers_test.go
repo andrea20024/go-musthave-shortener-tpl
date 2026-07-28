@@ -40,7 +40,7 @@ func Test_GetHandler(t *testing.T) {
 			}
 
 			repo := storage.NewMapRepository()
-			repo.Add(shortURL, tt.ref)
+			repo.Add(shortURL, tt.ref, "test-user-id")
 			req := httptest.NewRequest(http.MethodGet, "/"+shortURL, nil)
 			w := httptest.NewRecorder()
 

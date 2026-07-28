@@ -16,8 +16,8 @@ type dbRepository struct {
 	db *sql.DB
 }
 
-func (r *dbRepository) Add(key string, url string) error {
-	result, err := r.db.Exec("INSERT INTO urls (short_url, original_url) VALUES ($1, $2) ON CONFLICT ON CONSTRAINT urls_original_url_key DO NOTHING", key, url)
+func (r *dbRepository) Add(key string, url string, userID string) error {
+	result, err := r.db.Exec("INSERT INTO urls (short_url, original_url, user_id) VALUES ($1, $2, $3) ON CONFLICT ON CONSTRAINT urls_original_url_key DO NOTHING", key, url, userID)
 	if err != nil {
 		return err
 	}
@@ -43,11 +43,35 @@ func (r *dbRepository) GetKeyByURL(url string) (string, error) {
 	return key, err
 }
 
+func (r *dbRepository) GetUserURLs(userID string) ([]UserURL, error) {
+	rows, err := r.db.Query("SELECT short_url, original_url FROM urls WHERE user_id = $1", userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var urls []UserURL
+	for rows.Next() {
+		var shortURL, originalURL string
+		if err := rows.Scan(&shortURL, &originalURL); err != nil {
+			return nil, err
+		}
+		urls = append(urls, UserURL{
+			ShortURL:    shortURL,
+			OriginalURL: originalURL,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return urls, nil
+}
+
 func (r *dbRepository) Ping() error {
 	return r.db.Ping()
 }
 
-func (r *dbRepository) AddBatch(urls map[string]string) error {
+func (r *dbRepository) AddBatch(urls map[string]string, userID string) error {
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err
@@ -58,14 +82,14 @@ func (r *dbRepository) AddBatch(urls map[string]string) error {
 		}
 	}()
 
-	stmt, err := tx.Prepare("INSERT INTO urls (short_url, original_url) VALUES ($1, $2) ON CONFLICT ON CONSTRAINT urls_original_url_key DO NOTHING")
+	stmt, err := tx.Prepare("INSERT INTO urls (short_url, original_url, user_id) VALUES ($1, $2, $3) ON CONFLICT ON CONSTRAINT urls_original_url_key DO NOTHING")
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
 	for key, url := range urls {
-		result, err := stmt.Exec(key, url)
+		result, err := stmt.Exec(key, url, userID)
 		if err != nil {
 			return err
 		}

@@ -1,10 +1,16 @@
 package storage
 
+type UserURL struct {
+	ShortURL    string `json:"short_url"`
+	OriginalURL string `json:"original_url"`
+}
+
 type Repository interface {
-	Add(key string, url string) error
-	AddBatch(urls map[string]string) error
+	Add(key string, url string, userID string) error
+	AddBatch(urls map[string]string, userID string) error
 	Get(key string) (string, error)
 	GetKeyByURL(url string) (string, error)
+	GetUserURLs(userID string) ([]UserURL, error)
 	Ping() error
 	IsDuplicateError(err error) bool
 }
