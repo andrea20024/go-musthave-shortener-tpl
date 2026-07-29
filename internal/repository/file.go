@@ -13,12 +13,15 @@ type Event struct {
 	UUID        string `json:"uuid"`
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
+	UserID      string `json:"user_id"`
+	IsDeleted   bool   `json:"is_deleted"`
 }
 
 type FileRepository struct {
 	filename string
 	dict     map[string]string
 	userUrls map[string]map[string]string
+	deleted  map[string]bool
 }
 
 type Consumer struct {
@@ -54,13 +57,26 @@ func (c *Consumer) Close() error {
 }
 
 func NewFileRepository(filename string) (*FileRepository, error) {
-	repo := &FileRepository{filename: filename, dict: make(map[string]string), userUrls: make(map[string]map[string]string)}
+	repo := &FileRepository{
+		filename: filename, dict: make(map[string]string),
+		userUrls: make(map[string]map[string]string),
+		deleted:  make(map[string]bool),
+	}
 	events, err := repo.loadEvents()
 	if err != nil {
 		return nil, err
 	}
 	for _, event := range events {
 		repo.dict[event.ShortURL] = event.OriginalURL
+		if event.UserID != "" {
+			if repo.userUrls[event.UserID] == nil {
+				repo.userUrls[event.UserID] = make(map[string]string)
+			}
+			repo.userUrls[event.UserID][event.ShortURL] = event.OriginalURL
+		}
+		if event.IsDeleted {
+			repo.deleted[event.ShortURL] = true
+		}
 	}
 	return repo, nil
 }
@@ -95,7 +111,8 @@ func (r *FileRepository) Add(key string, url string, userID string) error {
 		r.userUrls[userID] = make(map[string]string)
 	}
 	r.userUrls[userID][key] = url
-	event := Event{ShortURL: key, OriginalURL: url}
+	r.deleted[key] = false
+	event := Event{ShortURL: key, OriginalURL: url, UserID: userID, IsDeleted: false}
 	if err := r.writeFile(&event); err != nil {
 		return err
 	}
@@ -113,7 +130,8 @@ func (r *FileRepository) AddBatch(urls map[string]string, userID string) error {
 			r.userUrls[userID] = make(map[string]string)
 		}
 		r.userUrls[userID][key] = url
-		event := Event{ShortURL: key, OriginalURL: url}
+		r.deleted[key] = false
+		event := Event{ShortURL: key, OriginalURL: url, UserID: userID, IsDeleted: false}
 		if err := r.writeFile(&event); err != nil {
 			return err
 		}
@@ -122,6 +140,9 @@ func (r *FileRepository) AddBatch(urls map[string]string, userID string) error {
 }
 
 func (r *FileRepository) Get(key string) (string, error) {
+	if r.deleted[key] {
+		return "", &DeletedError{}
+	}
 	val, ok := r.dict[key]
 	if ok {
 		return val, nil
@@ -131,7 +152,7 @@ func (r *FileRepository) Get(key string) (string, error) {
 
 func (r *FileRepository) GetKeyByURL(url string) (string, error) {
 	for key, val := range r.dict {
-		if val == url {
+		if val == url && !r.deleted[key] {
 			return key, nil
 		}
 	}
@@ -141,12 +162,30 @@ func (r *FileRepository) GetKeyByURL(url string) (string, error) {
 func (r *FileRepository) GetUserURLs(userID string) ([]UserURL, error) {
 	urls := make([]UserURL, 0)
 	for key, orig := range r.userUrls[userID] {
-		urls = append(urls, UserURL{
-			ShortURL:    key,
-			OriginalURL: orig,
-		})
+		if !r.deleted[key] {
+			urls = append(urls, UserURL{
+				ShortURL:    key,
+				OriginalURL: orig,
+			})
+		}
 	}
 	return urls, nil
+}
+
+func (r *FileRepository) DeleteUserURLs(userID string, keys []string) error {
+	if r.userUrls[userID] == nil {
+		return nil
+	}
+	for _, key := range keys {
+		if _, exists := r.userUrls[userID][key]; exists {
+			r.deleted[key] = true
+			event := Event{ShortURL: key, IsDeleted: true}
+			if err := r.writeFile(&event); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (r *FileRepository) GetDict() map[string]string {
@@ -165,6 +204,11 @@ func (r *FileRepository) Ping() error {
 func (r *FileRepository) IsDuplicateError(err error) bool {
 	var dupErr *DuplicateError
 	return errors.As(err, &dupErr) && dupErr.Error() == "duplicate"
+}
+
+func (r *FileRepository) IsDeletedError(err error) bool {
+	var delErr *DeletedError
+	return errors.As(err, &delErr)
 }
 
 func (r *FileRepository) writeFile(event *Event) error {

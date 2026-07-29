@@ -94,6 +94,9 @@ func Start(config *config.Config) {
 	r.Get("/api/user/urls", func(w http.ResponseWriter, r *http.Request) {
 		handlers.GetURLByUserHandler(w, r, config, repo)
 	})
+	r.Delete("/api/user/urls", func(w http.ResponseWriter, r *http.Request) {
+		handlers.DeleteURLsHandler(w, r, config, repo)
+	})
 
 	log.Fatal(http.ListenAndServe(config.Host, r))
 }

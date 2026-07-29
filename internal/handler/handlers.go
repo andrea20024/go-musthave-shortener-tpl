@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 
@@ -42,6 +43,10 @@ func GetHandler(w http.ResponseWriter, req *http.Request, repo storage.Repositor
 
 	url, err := repo.Get(shortURL)
 	if err != nil {
+		if repo.IsDeletedError(err) {
+			w.WriteHeader(http.StatusGone)
+			return
+		}
 		http.Error(w, "Url not found!", http.StatusBadRequest)
 		return
 	}
@@ -276,4 +281,36 @@ func GetURLByUserHandler(w http.ResponseWriter, req *http.Request, config *confi
 func getUserID(req *http.Request) (string, bool) {
 	userID, ok := req.Context().Value(auth.UserIDContextKey).(string)
 	return userID, ok
+}
+
+func DeleteURLsHandler(w http.ResponseWriter, req *http.Request, config *config.Config, repo storage.Repository) {
+	if req.Method != http.MethodDelete {
+		http.Error(w, "Only DELETE method", http.StatusBadRequest)
+		return
+	}
+
+	userID, ok := getUserID(req)
+	if !ok {
+		http.Error(w, "User not authenticated", http.StatusUnauthorized)
+		return
+	}
+
+	var keys []string
+	if err := json.NewDecoder(req.Body).Decode(&keys); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if len(keys) == 0 {
+		http.Error(w, "Empty array", http.StatusBadRequest)
+		return
+	}
+
+	go func() {
+		err := repo.DeleteUserURLs(userID, keys)
+		if err != nil {
+			log.Printf("DeleteUserURLs error: %v", err)
+		}
+	}()
+
+	w.WriteHeader(http.StatusAccepted)
 }
