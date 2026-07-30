@@ -1,5 +1,7 @@
 package config
 
+import "fmt"
+
 type Config struct {
 	Host       string `env:"SERVER_ADDRESS"`
 	BaseURL    string `env:"BASE_URL"`
@@ -10,13 +12,18 @@ type Config struct {
 }
 
 func InitConfig() *Config {
-	config := &Config{
+	return &Config{
 		Host:       "localhost:8080",
 		BaseURL:    "http://localhost:8080",
 		FilePath:   "storage.json",
 		DB:         "host=localhost port=5434 user=loader password=1234 dbname=truecode_db sslmode=disable",
-		AuthSecret: "hello",
 		StoreType:  "memory",
 	}
-	return config
+}
+
+func Validate(cfg *Config) error {
+	if cfg.AuthSecret == "" {
+		return fmt.Errorf("AUTH_SECRET is required")
+	}
+	return nil
 }

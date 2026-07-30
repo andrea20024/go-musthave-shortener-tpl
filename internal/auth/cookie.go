@@ -42,7 +42,9 @@ func getOrCreateUser(r *http.Request, w http.ResponseWriter) string {
 
 func newID() string {
 	b := make([]byte, 16)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		panic(err.Error())
+	}
 	return hex.EncodeToString(b)
 }
 

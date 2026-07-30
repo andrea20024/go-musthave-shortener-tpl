@@ -3,9 +3,11 @@ package storage
 import (
 	"errors"
 	"fmt"
+	"sync"
 )
 
 type MapRepository struct {
+	mu       sync.RWMutex
 	dict     map[string]string
 	userUrls map[string]map[string]string
 	deleted  map[string]bool
@@ -20,10 +22,15 @@ func NewMapRepository() *MapRepository {
 }
 
 func (r *MapRepository) Add(key string, url string, userID string) error {
-	existingKey, err := r.GetKeyByURL(url)
-	if err == nil && existingKey != "" {
-		return &DuplicateError{key: existingKey, url: url}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for existingKey, val := range r.dict {
+		if val == url && !r.deleted[existingKey] {
+			return &DuplicateError{key: existingKey, url: url}
+		}
 	}
+
 	r.dict[key] = url
 	if r.userUrls[userID] == nil {
 		r.userUrls[userID] = make(map[string]string)
@@ -34,10 +41,14 @@ func (r *MapRepository) Add(key string, url string, userID string) error {
 }
 
 func (r *MapRepository) AddBatch(urls map[string]string, userID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	for key, url := range urls {
-		existingKey, err := r.GetKeyByURL(url)
-		if err == nil && existingKey != "" {
-			return &DuplicateError{key: existingKey, url: url}
+		for existingKey, val := range r.dict {
+			if val == url && !r.deleted[existingKey] {
+				return &DuplicateError{key: existingKey, url: url}
+			}
 		}
 		r.dict[key] = url
 		if r.userUrls[userID] == nil {
@@ -50,6 +61,9 @@ func (r *MapRepository) AddBatch(urls map[string]string, userID string) error {
 }
 
 func (r *MapRepository) Get(key string) (string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	if r.deleted[key] {
 		return "", &DeletedError{}
 	}
@@ -61,6 +75,9 @@ func (r *MapRepository) Get(key string) (string, error) {
 }
 
 func (r *MapRepository) GetKeyByURL(url string) (string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	for key, val := range r.dict {
 		if val == url && !r.deleted[key] {
 			return key, nil
@@ -70,6 +87,9 @@ func (r *MapRepository) GetKeyByURL(url string) (string, error) {
 }
 
 func (r *MapRepository) GetUserURLs(userID string) ([]UserURL, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	urls := make([]UserURL, 0)
 	for key, orig := range r.userUrls[userID] {
 		if !r.deleted[key] {
@@ -83,6 +103,9 @@ func (r *MapRepository) GetUserURLs(userID string) ([]UserURL, error) {
 }
 
 func (r *MapRepository) DeleteUserURLs(userID string, keys []string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if r.userUrls[userID] == nil {
 		return nil
 	}

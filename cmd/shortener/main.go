@@ -10,14 +10,18 @@ import (
 )
 
 func main() {
-	config := config.InitConfig()
+	cfg := config.InitConfig()
 
-	flag.StringVar(&config.Host, "a", config.Host, "host")
-	flag.StringVar(&config.BaseURL, "b", config.BaseURL, "base url")
-	flag.StringVar(&config.FilePath, "f", config.FilePath, "file path")
-	flag.StringVar(&config.DB, "d", config.DB, "database")
+	flag.StringVar(&cfg.Host, "a", cfg.Host, "host")
+	flag.StringVar(&cfg.BaseURL, "b", cfg.BaseURL, "base url")
+	flag.StringVar(&cfg.FilePath, "f", cfg.FilePath, "file path")
+	flag.StringVar(&cfg.DB, "d", cfg.DB, "database")
 	flag.Parse()
-	env.Parse(config)
+	env.Parse(cfg)
 
-	server.Start(config)
+	if err := config.Validate(cfg); err != nil {
+		//log.Fatal(err)
+	}
+
+	server.Start(cfg)
 }

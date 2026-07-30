@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 )
 
 type Event struct {
@@ -18,6 +19,7 @@ type Event struct {
 }
 
 type FileRepository struct {
+	mu       sync.RWMutex
 	filename string
 	dict     map[string]string
 	userUrls map[string]map[string]string
@@ -58,7 +60,8 @@ func (c *Consumer) Close() error {
 
 func NewFileRepository(filename string) (*FileRepository, error) {
 	repo := &FileRepository{
-		filename: filename, dict: make(map[string]string),
+		filename: filename,
+		dict:     make(map[string]string),
 		userUrls: make(map[string]map[string]string),
 		deleted:  make(map[string]bool),
 	}
@@ -102,9 +105,13 @@ func (r *FileRepository) loadEvents() ([]Event, error) {
 }
 
 func (r *FileRepository) Add(key string, url string, userID string) error {
-	existingKey, err := r.GetKeyByURL(url)
-	if err == nil && existingKey != "" {
-		return &DuplicateError{key: existingKey, url: url}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for existingKey, val := range r.dict {
+		if val == url && !r.deleted[existingKey] {
+			return &DuplicateError{key: existingKey, url: url}
+		}
 	}
 	r.dict[key] = url
 	if r.userUrls[userID] == nil {
@@ -120,10 +127,14 @@ func (r *FileRepository) Add(key string, url string, userID string) error {
 }
 
 func (r *FileRepository) AddBatch(urls map[string]string, userID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	for key, url := range urls {
-		existingKey, err := r.GetKeyByURL(url)
-		if err == nil && existingKey != "" {
-			return &DuplicateError{key: existingKey, url: url}
+		for existingKey, val := range r.dict {
+			if val == url && !r.deleted[existingKey] {
+				return &DuplicateError{key: existingKey, url: url}
+			}
 		}
 		r.dict[key] = url
 		if r.userUrls[userID] == nil {
@@ -140,6 +151,9 @@ func (r *FileRepository) AddBatch(urls map[string]string, userID string) error {
 }
 
 func (r *FileRepository) Get(key string) (string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	if r.deleted[key] {
 		return "", &DeletedError{}
 	}
@@ -151,6 +165,9 @@ func (r *FileRepository) Get(key string) (string, error) {
 }
 
 func (r *FileRepository) GetKeyByURL(url string) (string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	for key, val := range r.dict {
 		if val == url && !r.deleted[key] {
 			return key, nil
@@ -160,6 +177,9 @@ func (r *FileRepository) GetKeyByURL(url string) (string, error) {
 }
 
 func (r *FileRepository) GetUserURLs(userID string) ([]UserURL, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	urls := make([]UserURL, 0)
 	for key, orig := range r.userUrls[userID] {
 		if !r.deleted[key] {
@@ -173,6 +193,9 @@ func (r *FileRepository) GetUserURLs(userID string) ([]UserURL, error) {
 }
 
 func (r *FileRepository) DeleteUserURLs(userID string, keys []string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if r.userUrls[userID] == nil {
 		return nil
 	}
@@ -189,7 +212,14 @@ func (r *FileRepository) DeleteUserURLs(userID string, keys []string) error {
 }
 
 func (r *FileRepository) GetDict() map[string]string {
-	return r.dict
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	result := make(map[string]string, len(r.dict))
+	for k, v := range r.dict {
+		result[k] = v
+	}
+	return result
 }
 
 func (r *FileRepository) Ping() error {
