@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"log"
 
 	"github.com/caarlos0/env/v6"
 
@@ -20,6 +21,7 @@ func main() {
 	env.Parse(cfg)
 
 	if err := config.Validate(cfg); err != nil {
+		log.Printf("Config validation error: %v", err)
 		//log.Fatal(err)
 	}
 
