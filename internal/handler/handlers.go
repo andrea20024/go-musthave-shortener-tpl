@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 
@@ -283,7 +282,7 @@ func getUserID(req *http.Request) (string, bool) {
 	return userID, ok
 }
 
-func DeleteURLsHandler(w http.ResponseWriter, req *http.Request, config *config.Config, repo storage.Repository) {
+func DeleteURLsHandler(w http.ResponseWriter, req *http.Request, config *config.Config, repo storage.Repository, worker *Worker) {
 	if req.Method != http.MethodDelete {
 		http.Error(w, "Only DELETE method", http.StatusBadRequest)
 		return
@@ -305,12 +304,19 @@ func DeleteURLsHandler(w http.ResponseWriter, req *http.Request, config *config.
 		return
 	}
 
-	go func() {
-		err := repo.DeleteUserURLs(userID, keys)
-		if err != nil {
-			log.Printf("DeleteUserURLs error: %v", err)
-		}
-	}()
+	if worker == nil {
+		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	sent := worker.submit(DeleteTask{
+		userID: userID,
+		keys:   keys,
+	})
+	if !sent {
+		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+		return
+	}
 
 	w.WriteHeader(http.StatusAccepted)
 }

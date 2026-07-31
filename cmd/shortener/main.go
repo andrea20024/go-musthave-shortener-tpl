@@ -17,12 +17,13 @@ func main() {
 	flag.StringVar(&cfg.BaseURL, "b", cfg.BaseURL, "base url")
 	flag.StringVar(&cfg.FilePath, "f", cfg.FilePath, "file path")
 	flag.StringVar(&cfg.DB, "d", cfg.DB, "database")
+	flag.IntVar(&cfg.WorkerBufferSize, "worker-buffer", cfg.WorkerBufferSize, "worker buffer size")
 	flag.Parse()
 	env.Parse(cfg)
 
 	if err := config.Validate(cfg); err != nil {
+		//Можно и остановку поставить - log.Fatal(err)
 		log.Printf("Config validation error: %v", err)
-		//log.Fatal(err)
 	}
 
 	server.Start(cfg)

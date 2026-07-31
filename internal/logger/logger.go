@@ -13,6 +13,10 @@ func InitLogger(logger *zap.Logger) {
 	sugarLogger = logger.Sugar()
 }
 
+func Sugar() *zap.SugaredLogger {
+	return sugarLogger
+}
+
 type (
 	responseData struct {
 		status int
