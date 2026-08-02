@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"log"
 
 	"github.com/caarlos0/env/v6"
 
@@ -10,14 +11,20 @@ import (
 )
 
 func main() {
-	config := config.InitConfig()
+	cfg := config.InitConfig()
 
-	flag.StringVar(&config.Host, "a", config.Host, "host")
-	flag.StringVar(&config.BaseURL, "b", config.BaseURL, "base url")
-	flag.StringVar(&config.FilePath, "f", config.FilePath, "file path")
-	flag.StringVar(&config.DB, "d", config.DB, "database")
+	flag.StringVar(&cfg.Host, "a", cfg.Host, "host")
+	flag.StringVar(&cfg.BaseURL, "b", cfg.BaseURL, "base url")
+	flag.StringVar(&cfg.FilePath, "f", cfg.FilePath, "file path")
+	flag.StringVar(&cfg.DB, "d", cfg.DB, "database")
+	flag.IntVar(&cfg.WorkerBufferSize, "worker-buffer", cfg.WorkerBufferSize, "worker buffer size")
 	flag.Parse()
-	env.Parse(config)
+	env.Parse(cfg)
 
-	server.Start(config)
+	if err := config.Validate(cfg); err != nil {
+		//Можно и остановку поставить - log.Fatal(err)
+		log.Printf("Config validation error: %v", err)
+	}
+
+	server.Start(cfg)
 }

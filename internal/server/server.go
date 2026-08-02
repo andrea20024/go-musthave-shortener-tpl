@@ -2,13 +2,16 @@ package server
 
 import (
 	"io"
-	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 
 	compress "github.com/andrea20024/go-musthave-shortener-tpl/internal/compress"
 	config "github.com/andrea20024/go-musthave-shortener-tpl/internal/config"
 	handlers "github.com/andrea20024/go-musthave-shortener-tpl/internal/handler"
 	logger "github.com/andrea20024/go-musthave-shortener-tpl/internal/logger"
+	auth "github.com/andrea20024/go-musthave-shortener-tpl/internal/auth"
 	storage "github.com/andrea20024/go-musthave-shortener-tpl/internal/repository"
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
@@ -16,6 +19,8 @@ import (
 
 func Start(config *config.Config) {
 	r := chi.NewRouter()
+
+	auth.Init(config.AuthSecret)
 
 	var repo storage.Repository
 
@@ -41,7 +46,6 @@ func Start(config *config.Config) {
 	if err != nil {
 		panic(err)
 	}
-	defer logg.Sync()
 
 	logger.InitLogger(logg)
 
@@ -51,7 +55,7 @@ func Start(config *config.Config) {
 	if config.FilePath != "" && config.StoreType != "file" {
 		consumer, err := storage.NewConsumer(config.FilePath)
 		if err != nil {
-			log.Printf("NewConsumer error: %v", err)
+			sugar.Errorf("NewConsumer error: %v", err)
 		} else {
 			for {
 				event, err := consumer.ReadEvent()
@@ -64,13 +68,16 @@ func Start(config *config.Config) {
 				if event == nil {
 					break
 				}
-				repo.Add(event.ShortURL, event.OriginalURL)
+				repo.Add(event.ShortURL, event.OriginalURL, "")
 			}
 		}
 	}
 
+	worker := handlers.NewWorker(config.WorkerBufferSize, repo)
+
 	r.Use(logger.WithLogging)
 	r.Use(compress.GzipHandle)
+	r.Use(auth.CookieMiddleware)
 
 	r.Get("/{id}", func(w http.ResponseWriter, req *http.Request) {
 		handlers.GetHandler(w, req, repo)
@@ -87,6 +94,23 @@ func Start(config *config.Config) {
 	r.Post("/api/shorten/batch", func(w http.ResponseWriter, r *http.Request) {
 		handlers.BatchHandler(w, r, config, repo)
 	})
+	r.Get("/api/user/urls", func(w http.ResponseWriter, r *http.Request) {
+		handlers.GetURLByUserHandler(w, r, config, repo)
+	})
+	r.Delete("/api/user/urls", func(w http.ResponseWriter, r *http.Request) {
+		handlers.DeleteURLsHandler(w, r, config, repo, worker)
+	})
 
-	log.Fatal(http.ListenAndServe(config.Host, r))
+	go func() {
+		if err := http.ListenAndServe(config.Host, r); err != nil {
+			sugar.Fatalf("Server error: %v", err)
+		}
+	}()
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	<-sig
+
+	worker.Shutdown()
+	sugar.Info("Server stopped")
 }

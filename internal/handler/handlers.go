@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
+	auth "github.com/andrea20024/go-musthave-shortener-tpl/internal/auth"
 	config "github.com/andrea20024/go-musthave-shortener-tpl/internal/config"
 	storage "github.com/andrea20024/go-musthave-shortener-tpl/internal/repository"
 )
@@ -40,6 +42,10 @@ func GetHandler(w http.ResponseWriter, req *http.Request, repo storage.Repositor
 
 	url, err := repo.Get(shortURL)
 	if err != nil {
+		if repo.IsDeletedError(err) {
+			w.WriteHeader(http.StatusGone)
+			return
+		}
 		http.Error(w, "Url not found!", http.StatusBadRequest)
 		return
 	}
@@ -67,7 +73,9 @@ func PostHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 		return
 	}
 
-	err = repo.Add(shortURL, url)
+	userID, _ := getUserID(req)
+
+	err = repo.Add(shortURL, url, userID)
 	if err != nil {
 		if repo.IsDuplicateError(err) {
 			existingKey, err := repo.GetKeyByURL(url)
@@ -83,6 +91,7 @@ func PostHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 	}
 
 	w.Header().Set("Content-Type", "text/plain")
+	w.Header().Set("Authorization", userID)
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte(config.BaseURL + "/" + shortURL))
 }
@@ -113,7 +122,9 @@ func JSONHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 		return
 	}
 
-	err = repo.Add(shortURL, url)
+	userID, _ := getUserID(req)
+
+	err = repo.Add(shortURL, url, userID)
 	if err != nil {
 		if repo.IsDuplicateError(err) {
 			existingKey, err := repo.GetKeyByURL(url)
@@ -194,6 +205,7 @@ func BatchHandler(w http.ResponseWriter, req *http.Request, config *config.Confi
 
 	results := make([]BatchOutput, 0, len(batchInputs))
 	urls := make(map[string]string)
+	userID, _ := getUserID(req)
 	for _, input := range batchInputs {
 		shortURL, err := GenerateShortURL()
 		if err != nil {
@@ -210,7 +222,7 @@ func BatchHandler(w http.ResponseWriter, req *http.Request, config *config.Confi
 		results = append(results, result)
 	}
 
-	err = repo.AddBatch(urls)
+	err = repo.AddBatch(urls, userID)
 	if err != nil {
 		if repo.IsDuplicateError(err) {
 			http.Error(w, "Duplicate URL in batch", http.StatusConflict)
@@ -229,4 +241,82 @@ func BatchHandler(w http.ResponseWriter, req *http.Request, config *config.Confi
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	w.Write(resp)
+}
+
+func GetURLByUserHandler(w http.ResponseWriter, req *http.Request, config *config.Config, repo storage.Repository) {
+	if req.Method != http.MethodGet {
+		http.Error(w, "Only GET method", http.StatusBadRequest)
+		return
+	}
+
+	userID, ok := getUserID(req)
+	if !ok {
+		http.Error(w, "User not authenticated", http.StatusUnauthorized)
+		return
+	}
+
+	urls, err := repo.GetUserURLs(userID)
+	if err != nil {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	if len(urls) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	for i := range urls {
+		if !strings.Contains(urls[i].ShortURL, "://") {
+			urls[i].ShortURL = config.BaseURL + "/" + urls[i].ShortURL
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(urls)
+}
+
+func getUserID(req *http.Request) (string, bool) {
+	userID, ok := req.Context().Value(auth.UserIDContextKey).(string)
+	return userID, ok
+}
+
+func DeleteURLsHandler(w http.ResponseWriter, req *http.Request, config *config.Config, repo storage.Repository, worker *Worker) {
+	if req.Method != http.MethodDelete {
+		http.Error(w, "Only DELETE method", http.StatusBadRequest)
+		return
+	}
+
+	userID, ok := getUserID(req)
+	if !ok {
+		http.Error(w, "User not authenticated", http.StatusUnauthorized)
+		return
+	}
+
+	var keys []string
+	if err := json.NewDecoder(req.Body).Decode(&keys); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if len(keys) == 0 {
+		http.Error(w, "Empty array", http.StatusBadRequest)
+		return
+	}
+
+	if worker == nil {
+		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	sent := worker.submit(DeleteTask{
+		userID: userID,
+		keys:   keys,
+	})
+	if !sent {
+		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	w.WriteHeader(http.StatusAccepted)
 }

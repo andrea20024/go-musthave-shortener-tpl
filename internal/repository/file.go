@@ -7,17 +7,23 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 )
 
 type Event struct {
 	UUID        string `json:"uuid"`
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
+	UserID      string `json:"user_id"`
+	IsDeleted   bool   `json:"is_deleted"`
 }
 
 type FileRepository struct {
+	mu       sync.RWMutex
 	filename string
 	dict     map[string]string
+	userUrls map[string]map[string]string
+	deleted  map[string]bool
 }
 
 type Consumer struct {
@@ -53,13 +59,27 @@ func (c *Consumer) Close() error {
 }
 
 func NewFileRepository(filename string) (*FileRepository, error) {
-	repo := &FileRepository{filename: filename, dict: make(map[string]string)}
+	repo := &FileRepository{
+		filename: filename,
+		dict:     make(map[string]string),
+		userUrls: make(map[string]map[string]string),
+		deleted:  make(map[string]bool),
+	}
 	events, err := repo.loadEvents()
 	if err != nil {
 		return nil, err
 	}
 	for _, event := range events {
 		repo.dict[event.ShortURL] = event.OriginalURL
+		if event.UserID != "" {
+			if repo.userUrls[event.UserID] == nil {
+				repo.userUrls[event.UserID] = make(map[string]string)
+			}
+			repo.userUrls[event.UserID][event.ShortURL] = event.OriginalURL
+		}
+		if event.IsDeleted {
+			repo.deleted[event.ShortURL] = true
+		}
 	}
 	return repo, nil
 }
@@ -84,27 +104,45 @@ func (r *FileRepository) loadEvents() ([]Event, error) {
 	return events, scanner.Err()
 }
 
-func (r *FileRepository) Add(key string, url string) error {
-	existingKey, err := r.GetKeyByURL(url)
-	if err == nil && existingKey != "" {
-		return &DuplicateError{key: existingKey, url: url}
+func (r *FileRepository) Add(key string, url string, userID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for existingKey, val := range r.dict {
+		if val == url && !r.deleted[existingKey] {
+			return &DuplicateError{key: existingKey, url: url}
+		}
 	}
 	r.dict[key] = url
-	event := Event{ShortURL: key, OriginalURL: url}
+	if r.userUrls[userID] == nil {
+		r.userUrls[userID] = make(map[string]string)
+	}
+	r.userUrls[userID][key] = url
+	r.deleted[key] = false
+	event := Event{ShortURL: key, OriginalURL: url, UserID: userID, IsDeleted: false}
 	if err := r.writeFile(&event); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (r *FileRepository) AddBatch(urls map[string]string) error {
+func (r *FileRepository) AddBatch(urls map[string]string, userID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	for key, url := range urls {
-		existingKey, err := r.GetKeyByURL(url)
-		if err == nil && existingKey != "" {
-			return &DuplicateError{key: existingKey, url: url}
+		for existingKey, val := range r.dict {
+			if val == url && !r.deleted[existingKey] {
+				return &DuplicateError{key: existingKey, url: url}
+			}
 		}
 		r.dict[key] = url
-		event := Event{ShortURL: key, OriginalURL: url}
+		if r.userUrls[userID] == nil {
+			r.userUrls[userID] = make(map[string]string)
+		}
+		r.userUrls[userID][key] = url
+		r.deleted[key] = false
+		event := Event{ShortURL: key, OriginalURL: url, UserID: userID, IsDeleted: false}
 		if err := r.writeFile(&event); err != nil {
 			return err
 		}
@@ -113,6 +151,12 @@ func (r *FileRepository) AddBatch(urls map[string]string) error {
 }
 
 func (r *FileRepository) Get(key string) (string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	if r.deleted[key] {
+		return "", &DeletedError{}
+	}
 	val, ok := r.dict[key]
 	if ok {
 		return val, nil
@@ -121,16 +165,61 @@ func (r *FileRepository) Get(key string) (string, error) {
 }
 
 func (r *FileRepository) GetKeyByURL(url string) (string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	for key, val := range r.dict {
-		if val == url {
+		if val == url && !r.deleted[key] {
 			return key, nil
 		}
 	}
 	return "", fmt.Errorf("url not found: %s", url)
 }
 
+func (r *FileRepository) GetUserURLs(userID string) ([]UserURL, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	urls := make([]UserURL, 0)
+	for key, orig := range r.userUrls[userID] {
+		if !r.deleted[key] {
+			urls = append(urls, UserURL{
+				ShortURL:    key,
+				OriginalURL: orig,
+			})
+		}
+	}
+	return urls, nil
+}
+
+func (r *FileRepository) DeleteUserURLs(userID string, keys []string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.userUrls[userID] == nil {
+		return nil
+	}
+	for _, key := range keys {
+		if _, exists := r.userUrls[userID][key]; exists {
+			r.deleted[key] = true
+			event := Event{ShortURL: key, IsDeleted: true}
+			if err := r.writeFile(&event); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (r *FileRepository) GetDict() map[string]string {
-	return r.dict
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	result := make(map[string]string, len(r.dict))
+	for k, v := range r.dict {
+		result[k] = v
+	}
+	return result
 }
 
 func (r *FileRepository) Ping() error {
@@ -145,6 +234,11 @@ func (r *FileRepository) Ping() error {
 func (r *FileRepository) IsDuplicateError(err error) bool {
 	var dupErr *DuplicateError
 	return errors.As(err, &dupErr) && dupErr.Error() == "duplicate"
+}
+
+func (r *FileRepository) IsDeletedError(err error) bool {
+	var delErr *DeletedError
+	return errors.As(err, &delErr)
 }
 
 func (r *FileRepository) writeFile(event *Event) error {
