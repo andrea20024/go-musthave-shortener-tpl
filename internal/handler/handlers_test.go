@@ -44,7 +44,7 @@ func Test_GetHandler(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/"+shortURL, nil)
 			w := httptest.NewRecorder()
 
-			GetHandler(w, req, repo)
+			GetHandler(w, req, repo, nil)
 			res := w.Result()
 			defer res.Body.Close()
 
@@ -83,7 +83,7 @@ func TestPostHandler(t *testing.T) {
 			w := httptest.NewRecorder()
 
 			repo := storage.NewMapRepository()
-			PostHandler(w, req, &tt.config, repo)
+			PostHandler(w, req, &tt.config, repo, nil)
 			res := w.Result()
 			defer res.Body.Close()
 

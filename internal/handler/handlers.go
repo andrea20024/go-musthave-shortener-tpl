@@ -8,8 +8,10 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	auth "github.com/andrea20024/go-musthave-shortener-tpl/internal/auth"
+	audit "github.com/andrea20024/go-musthave-shortener-tpl/internal/audit"
 	config "github.com/andrea20024/go-musthave-shortener-tpl/internal/config"
 	storage "github.com/andrea20024/go-musthave-shortener-tpl/internal/repository"
 )
@@ -32,7 +34,7 @@ type BatchOutput struct {
 	ShortURL      string `json:"short_url"`
 }
 
-func GetHandler(w http.ResponseWriter, req *http.Request, repo storage.Repository) {
+func GetHandler(w http.ResponseWriter, req *http.Request, repo storage.Repository, notifier *audit.Notifier) {
 	if req.Method != http.MethodGet {
 		http.Error(w, "Only GET method", http.StatusBadRequest)
 		return
@@ -49,11 +51,22 @@ func GetHandler(w http.ResponseWriter, req *http.Request, repo storage.Repositor
 		http.Error(w, "Url not found!", http.StatusBadRequest)
 		return
 	}
+
+	userID, _ := getUserID(req)
+	if notifier != nil {
+		notifier.NotifyAll(audit.Event{
+			Timestamp: time.Now().Unix(),
+			Action:    "follow",
+			UserID:    userID,
+			URL:       url,
+		})
+	}
+
 	w.Header().Add("Location", url)
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
-func PostHandler(w http.ResponseWriter, req *http.Request, config *config.Config, repo storage.Repository) {
+func PostHandler(w http.ResponseWriter, req *http.Request, config *config.Config, repo storage.Repository, notifier *audit.Notifier) {
 	if req.Method != http.MethodPost {
 		http.Error(w, "Only POST method", http.StatusBadRequest)
 		return
@@ -90,13 +103,22 @@ func PostHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 		return
 	}
 
+	if notifier != nil {
+		notifier.NotifyAll(audit.Event{
+			Timestamp: time.Now().Unix(),
+			Action:    "shorten",
+			UserID:    userID,
+			URL:       url,
+		})
+	}
+
 	w.Header().Set("Content-Type", "text/plain")
 	w.Header().Set("Authorization", userID)
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte(config.BaseURL + "/" + shortURL))
 }
 
-func JSONHandler(w http.ResponseWriter, req *http.Request, config *config.Config, repo storage.Repository) {
+func JSONHandler(w http.ResponseWriter, req *http.Request, config *config.Config, repo storage.Repository, notifier *audit.Notifier) {
 	if req.Method != http.MethodPost {
 		http.Error(w, "Only POST method", http.StatusBadRequest)
 		return
@@ -143,6 +165,15 @@ func JSONHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 		}
 		http.Error(w, "Add url failed", http.StatusInternalServerError)
 		return
+	}
+
+	if notifier != nil {
+		notifier.NotifyAll(audit.Event{
+			Timestamp: time.Now().Unix(),
+			Action:    "shorten",
+			UserID:    userID,
+			URL:       url,
+		})
 	}
 
 	res := Output{Result: fmt.Sprintf("%s/%s", config.BaseURL, shortURL)}

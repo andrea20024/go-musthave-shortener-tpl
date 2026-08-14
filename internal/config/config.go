@@ -9,6 +9,8 @@ type Config struct {
 	DB               string `env:"DATABASE_DSN"`
 	AuthSecret       string `env:"AUTH_SECRET"`
 	WorkerBufferSize int    `env:"WORKER_BUFFER_SIZE"`
+	AuditFile        string `env:"AUDIT_FILE"`
+	AuditURL         string `env:"AUDIT_URL"`
 	StoreType        string
 }
 
@@ -19,6 +21,8 @@ func InitConfig() *Config {
 		FilePath:         "storage.json",
 		DB:               "host=localhost port=5434 user=loader password=1234 dbname=truecode_db sslmode=disable",
 		WorkerBufferSize: 100,
+		AuditFile:        "audit.txt",
+		AuditURL:         "http://localhost:5001/audit",
 		StoreType:        "memory",
 	}
 }

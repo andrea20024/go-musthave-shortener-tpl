@@ -18,6 +18,8 @@ func main() {
 	flag.StringVar(&cfg.FilePath, "f", cfg.FilePath, "file path")
 	flag.StringVar(&cfg.DB, "d", cfg.DB, "database")
 	flag.IntVar(&cfg.WorkerBufferSize, "worker-buffer", cfg.WorkerBufferSize, "worker buffer size")
+	flag.StringVar(&cfg.AuditFile, "audit-file", cfg.AuditFile, "audit file path")
+	flag.StringVar(&cfg.AuditURL, "audit-url", cfg.AuditURL, "audit URL")
 	flag.Parse()
 	env.Parse(cfg)
 

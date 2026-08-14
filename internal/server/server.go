@@ -7,11 +7,12 @@ import (
 	"os/signal"
 	"syscall"
 
+	audit "github.com/andrea20024/go-musthave-shortener-tpl/internal/audit"
+	auth "github.com/andrea20024/go-musthave-shortener-tpl/internal/auth"
 	compress "github.com/andrea20024/go-musthave-shortener-tpl/internal/compress"
 	config "github.com/andrea20024/go-musthave-shortener-tpl/internal/config"
 	handlers "github.com/andrea20024/go-musthave-shortener-tpl/internal/handler"
 	logger "github.com/andrea20024/go-musthave-shortener-tpl/internal/logger"
-	auth "github.com/andrea20024/go-musthave-shortener-tpl/internal/auth"
 	storage "github.com/andrea20024/go-musthave-shortener-tpl/internal/repository"
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
@@ -75,18 +76,30 @@ func Start(config *config.Config) {
 
 	worker := handlers.NewWorker(config.WorkerBufferSize, repo)
 
+	notifier := audit.NewNotifier()
+	if config.AuditFile != "" {
+		fileReceiver, err := audit.NewFileReceiver(config.AuditFile)
+		if err == nil {
+			notifier.Attach(fileReceiver)
+		}
+	}
+	if config.AuditURL != "" {
+		httpReceiver := audit.NewHTTPReceiver(config.AuditURL)
+		notifier.Attach(httpReceiver)
+	}
+
 	r.Use(logger.WithLogging)
 	r.Use(compress.GzipHandle)
 	r.Use(auth.CookieMiddleware)
 
 	r.Get("/{id}", func(w http.ResponseWriter, req *http.Request) {
-		handlers.GetHandler(w, req, repo)
+		handlers.GetHandler(w, req, repo, notifier)
 	})
 	r.Post("/", func(w http.ResponseWriter, r *http.Request) {
-		handlers.PostHandler(w, r, config, repo)
+		handlers.PostHandler(w, r, config, repo, notifier)
 	})
 	r.Post("/api/shorten", func(w http.ResponseWriter, r *http.Request) {
-		handlers.JSONHandler(w, r, config, repo)
+		handlers.JSONHandler(w, r, config, repo, notifier)
 	})
 	r.Get("/ping", func(w http.ResponseWriter, req *http.Request) {
 		handlers.PingHandler(w, req, repo)
