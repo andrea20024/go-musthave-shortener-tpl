@@ -5,7 +5,10 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
+
+	"net/http/pprof"
 
 	audit "github.com/andrea20024/go-musthave-shortener-tpl/internal/audit"
 	auth "github.com/andrea20024/go-musthave-shortener-tpl/internal/auth"
@@ -14,6 +17,7 @@ import (
 	handlers "github.com/andrea20024/go-musthave-shortener-tpl/internal/handler"
 	logger "github.com/andrea20024/go-musthave-shortener-tpl/internal/logger"
 	storage "github.com/andrea20024/go-musthave-shortener-tpl/internal/repository"
+
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 )
@@ -112,6 +116,18 @@ func Start(config *config.Config) {
 	})
 	r.Delete("/api/user/urls", func(w http.ResponseWriter, r *http.Request) {
 		handlers.DeleteURLsHandler(w, r, config, repo, worker)
+	})
+
+	// profiler
+	r.HandleFunc("/debug/pprof/heap", func(w http.ResponseWriter, r *http.Request) {
+		runtime.GC()
+		pprof.Profile(w, r)
+	})
+	r.HandleFunc("/debug/pprof/allocs", func(w http.ResponseWriter, r *http.Request) {
+		pprof.Handler("allocs").ServeHTTP(w, r)
+	})
+	r.HandleFunc("/debug/pprof/gc", func(w http.ResponseWriter, r *http.Request) {
+		pprof.Index(w, r)
 	})
 
 	go func() {

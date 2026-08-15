@@ -4,10 +4,9 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
-	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	auth "github.com/andrea20024/go-musthave-shortener-tpl/internal/auth"
@@ -32,6 +31,18 @@ type BatchInput struct {
 type BatchOutput struct {
 	CorrelationID string `json:"correlation_id"`
 	ShortURL      string `json:"short_url"`
+}
+
+var inputPool = sync.Pool{
+	New: func() interface{} { return &Input{} },
+}
+
+var outputPool = sync.Pool{
+	New: func() interface{} { return &Output{} },
+}
+
+var shortURLBytesPool = sync.Pool{
+	New: func() interface{} { return make([]byte, 6) },
 }
 
 func GetHandler(w http.ResponseWriter, req *http.Request, repo storage.Repository, notifier *audit.Notifier) {
@@ -72,13 +83,13 @@ func PostHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 		return
 	}
 
-	body, err := io.ReadAll(req.Body)
-	if err != nil {
+	buf := make([]byte, 1024)
+	n, err := req.Body.Read(buf)
+	if err != nil && n == 0 {
 		http.Error(w, "Invalid body", http.StatusBadRequest)
 		return
 	}
-
-	url := string(body)
+	url := string(buf[:n])
 
 	shortURL, err := GenerateShortURL()
 	if err != nil {
@@ -124,14 +135,9 @@ func JSONHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 		return
 	}
 
-	body, err := io.ReadAll(req.Body)
-	if err != nil {
-		http.Error(w, "Invalid body", http.StatusBadRequest)
-		return
-	}
-
-	var inputBody Input
-	if err = json.Unmarshal(body, &inputBody); err != nil {
+	inputBody := inputPool.Get().(*Input)
+	defer inputPool.Put(inputBody)
+	if err := json.NewDecoder(req.Body).Decode(inputBody); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -151,8 +157,10 @@ func JSONHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 		if repo.IsDuplicateError(err) {
 			existingKey, err := repo.GetKeyByURL(url)
 			if err == nil && existingKey != "" {
-				res := Output{Result: fmt.Sprintf("%s/%s", config.BaseURL, existingKey)}
+				res := outputPool.Get().(*Output)
+				res.Result = config.BaseURL + "/" + existingKey
 				resp, err := json.Marshal(res)
+				outputPool.Put(res)
 				if err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
@@ -176,8 +184,10 @@ func JSONHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 		})
 	}
 
-	res := Output{Result: fmt.Sprintf("%s/%s", config.BaseURL, shortURL)}
+	res := outputPool.Get().(*Output)
+	res.Result = config.BaseURL + "/" + shortURL
 	resp, err := json.Marshal(res)
+	outputPool.Put(res)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -203,7 +213,9 @@ func PingHandler(w http.ResponseWriter, req *http.Request, repo storage.Reposito
 }
 
 func GenerateShortURL() (string, error) {
-	bytes := make([]byte, 6)
+	bytes := shortURLBytesPool.Get().([]byte)
+	defer shortURLBytesPool.Put(bytes)
+
 	_, err := rand.Read(bytes)
 	if err != nil {
 		return "", err
@@ -217,14 +229,8 @@ func BatchHandler(w http.ResponseWriter, req *http.Request, config *config.Confi
 		return
 	}
 
-	body, err := io.ReadAll(req.Body)
-	if err != nil {
-		http.Error(w, "Invalid body", http.StatusBadRequest)
-		return
-	}
-
 	var batchInputs []BatchInput
-	if err = json.Unmarshal(body, &batchInputs); err != nil {
+	if err := json.NewDecoder(req.Body).Decode(&batchInputs); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -248,22 +254,25 @@ func BatchHandler(w http.ResponseWriter, req *http.Request, config *config.Confi
 
 		result := BatchOutput{
 			CorrelationID: input.CorrelationID,
-			ShortURL:      fmt.Sprintf("%s/%s", config.BaseURL, shortURL),
+			ShortURL:      config.BaseURL + "/" + shortURL,
 		}
 		results = append(results, result)
 	}
 
-	err = repo.AddBatch(urls, userID)
-	if err != nil {
+	if err := repo.AddBatch(urls, userID); err != nil {
 		if repo.IsDuplicateError(err) {
 			http.Error(w, "Duplicate URL in batch", http.StatusConflict)
-			return
+		} else {
+			http.Error(w, "Add batch failed", http.StatusInternalServerError)
 		}
-		http.Error(w, "Add batch failed", http.StatusInternalServerError)
 		return
 	}
 
 	resp, err := json.Marshal(results)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

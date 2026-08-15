@@ -2,18 +2,31 @@ package compress
 
 import (
 	"compress/gzip"
-	"io"
 	"net/http"
 	"strings"
+	"sync"
 )
 
-type gzipWriter struct {
+type gzipResponseWriter struct {
 	http.ResponseWriter
-	Writer io.Writer
+	gzipWriter *gzip.Writer
 }
 
-func (w gzipWriter) Write(b []byte) (int, error) {
-	return w.Writer.Write(b)
+func (w *gzipResponseWriter) Write(b []byte) (int, error) {
+	return w.gzipWriter.Write(b)
+}
+
+func (w *gzipResponseWriter) Close() error {
+	err := w.gzipWriter.Close()
+	gzipPool.Put(w.gzipWriter)
+	w.gzipWriter = nil
+	return err
+}
+
+var gzipPool = sync.Pool{
+	New: func() interface{} {
+		return new(gzip.Writer)
+	},
 }
 
 func GzipHandle(next http.Handler) http.Handler {
@@ -39,14 +52,16 @@ func GzipHandle(next http.Handler) http.Handler {
 			return
 		}
 
-		gz, err := gzip.NewWriterLevel(w, gzip.BestSpeed)
-		if err != nil {
-			io.WriteString(w, err.Error())
-			return
+		gz := gzipPool.Get().(*gzip.Writer)
+		gz.Reset(w)
+
+		grw := &gzipResponseWriter{
+			ResponseWriter: w,
+			gzipWriter:     gz,
 		}
-		defer gz.Close()
 
 		w.Header().Set("Content-Encoding", "gzip")
-		next.ServeHTTP(gzipWriter{ResponseWriter: w, Writer: gz}, r)
+		next.ServeHTTP(grw, r)
+		grw.Close()
 	})
 }
