@@ -273,10 +273,6 @@ func BatchHandler(w http.ResponseWriter, req *http.Request, config *config.Confi
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
