@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	auth "github.com/andrea20024/go-musthave-shortener-tpl/internal/auth"
 	audit "github.com/andrea20024/go-musthave-shortener-tpl/internal/audit"
+	auth "github.com/andrea20024/go-musthave-shortener-tpl/internal/auth"
 	config "github.com/andrea20024/go-musthave-shortener-tpl/internal/config"
 	storage "github.com/andrea20024/go-musthave-shortener-tpl/internal/repository"
 )
