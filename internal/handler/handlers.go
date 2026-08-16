@@ -276,8 +276,10 @@ func GenerateShortURL() (string, error) {
 //
 // Expected URL pattern: POST /api/shorten/batch with a JSON array body:
 // [
-//   {"correlation_id": "abc", "original_url": "https://example.com"},
-//   {"correlation_id": "def", "original_url": "https://golang.org"}
+//
+//	{"correlation_id": "abc", "original_url": "https://example.com"},
+//	{"correlation_id": "def", "original_url": "https://golang.org"}
+//
 // ]
 // Returns HTTP 201 Created with a JSON array of BatchOutput.
 func BatchHandler(w http.ResponseWriter, req *http.Request, config *config.Config, repo storage.Repository) {
