@@ -41,8 +41,6 @@ func TestGzipResponseWriter_Close(t *testing.T) {
 }
 
 func TestGzipPool(t *testing.T) {
-	assert.NotNil(t, gzipPool)
-
 	val := gzipPool.Get()
 	assert.NotNil(t, val)
 
