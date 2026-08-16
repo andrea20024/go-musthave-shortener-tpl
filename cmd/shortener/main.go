@@ -1,3 +1,21 @@
+// Package main is the entry point for the URL Shortener service.
+//
+// It initializes the configuration from environment variables and command-line
+// flags, then starts the HTTP server with all configured middleware and routes.
+//
+// Usage:
+//
+//	go run ./cmd/shortener [flags]
+//
+// Flags:
+//
+//	-a string        host address (default "localhost:8080")
+//	-b string        base URL for short links (default "http://localhost:8080")
+//	-f string        file storage path (optional)
+//	-d string        PostgreSQL DSN (optional)
+//	-worker-buffer int worker channel buffer size (default 100)
+//	-audit-file      file path for audit log
+//	-audit-url       HTTP URL for audit log
 package main
 
 import (

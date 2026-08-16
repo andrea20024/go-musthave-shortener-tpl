@@ -1,3 +1,8 @@
+// Package storage provides in-memory implementation of the Repository interface.
+//
+// This file contains the MapRepository struct which implements all methods of
+// the Repository interface using in-memory maps protected by sync.RWMutex.
+// Suitable for development and testing.
 package storage
 
 import (
@@ -6,6 +11,8 @@ import (
 	"sync"
 )
 
+// MapRepository implements the Repository interface using in-memory maps.
+// It is suitable for development and testing purposes.
 type MapRepository struct {
 	mu       sync.RWMutex
 	dict     map[string]string
@@ -13,6 +20,7 @@ type MapRepository struct {
 	deleted  map[string]bool
 }
 
+// NewMapRepository creates a new MapRepository with initialized maps.
 func NewMapRepository() *MapRepository {
 	return &MapRepository{
 		dict:     make(map[string]string),
@@ -21,6 +29,7 @@ func NewMapRepository() *MapRepository {
 	}
 }
 
+// Add stores a URL mapping, checking for duplicates first.
 func (r *MapRepository) Add(key string, url string, userID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -40,6 +49,7 @@ func (r *MapRepository) Add(key string, url string, userID string) error {
 	return nil
 }
 
+// AddBatch stores multiple URL mappings, checking for duplicates.
 func (r *MapRepository) AddBatch(urls map[string]string, userID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -60,6 +70,7 @@ func (r *MapRepository) AddBatch(urls map[string]string, userID string) error {
 	return nil
 }
 
+// Get retrieves the original URL by short URL key, returning DeletedError if deleted.
 func (r *MapRepository) Get(key string) (string, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -74,6 +85,7 @@ func (r *MapRepository) Get(key string) (string, error) {
 	return "", fmt.Errorf("key not found: %s", key)
 }
 
+// GetKeyByURL finds the short URL key for a given original URL.
 func (r *MapRepository) GetKeyByURL(url string) (string, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -86,6 +98,7 @@ func (r *MapRepository) GetKeyByURL(url string) (string, error) {
 	return "", fmt.Errorf("url not found: %s", url)
 }
 
+// GetUserURLs retrieves all non-deleted URLs for a specific user.
 func (r *MapRepository) GetUserURLs(userID string) ([]UserURL, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -102,6 +115,7 @@ func (r *MapRepository) GetUserURLs(userID string) ([]UserURL, error) {
 	return urls, nil
 }
 
+// DeleteUserURLs marks the specified URLs as deleted for the given user.
 func (r *MapRepository) DeleteUserURLs(userID string, keys []string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -117,15 +131,18 @@ func (r *MapRepository) DeleteUserURLs(userID string, keys []string) error {
 	return nil
 }
 
+// Ping checks if the repository is available (always returns nil for in-memory).
 func (r *MapRepository) Ping() error {
 	return nil
 }
 
+// IsDuplicateError checks if the error is a DuplicateError.
 func (r *MapRepository) IsDuplicateError(err error) bool {
 	var dupErr *DuplicateError
 	return errors.As(err, &dupErr) && dupErr.Error() == "duplicate"
 }
 
+// IsDeletedError checks if the error is a DeletedError.
 func (r *MapRepository) IsDeletedError(err error) bool {
 	var delErr *DeletedError
 	return errors.As(err, &delErr)

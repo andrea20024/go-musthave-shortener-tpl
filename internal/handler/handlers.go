@@ -1,3 +1,16 @@
+// Package handlers implements HTTP handlers for the URL shortener service.
+//
+// The package provides handlers for all REST API endpoints:
+//   - GET  /{id}         — redirect to original URL by short key
+//   - POST /            — plain-text URL shortening
+//   - POST /api/shorten — JSON URL shortening
+//   - POST /api/shorten/batch — batch JSON URL shortening
+//   - GET  /ping        — health check
+//   - GET  /api/user/urls — retrieve all URLs for the current user
+//   - DELETE /api/user/urls — asynchronously delete URLs for the current user
+//
+// Handlers use object pools (sync.Pool) for Input, Output, and byte buffers
+// to minimize garbage collector pressure under high load.
 package handlers
 
 import (
@@ -15,36 +28,55 @@ import (
 	storage "github.com/andrea20024/go-musthave-shortener-tpl/internal/repository"
 )
 
+// Input represents the request body for the JSON URL shortening endpoint.
 type Input struct {
 	URL string `json:"url"`
 }
 
+// Output represents the response body for the JSON URL shortening endpoint.
 type Output struct {
 	Result string `json:"result"`
 }
 
+// BatchInput represents a single entry in a batch shortening request.
 type BatchInput struct {
+	// CorrelationID is an arbitrary identifier returned unchanged in the
+	// corresponding BatchOutput, allowing the caller to correlate requests
+	// and responses.
 	CorrelationID string `json:"correlation_id"`
-	OriginalURL   string `json:"original_url"`
+	// OriginalURL is the long URL to be shortened.
+	OriginalURL string `json:"original_url"`
 }
 
+// BatchOutput represents a single entry in a batch shortening response.
 type BatchOutput struct {
+	// CorrelationID echoes the value from the corresponding BatchInput.
 	CorrelationID string `json:"correlation_id"`
-	ShortURL      string `json:"short_url"`
+	// ShortURL is the newly created short URL.
+	ShortURL string `json:"short_url"`
 }
 
+// inputPool is a sync.Pool of reusable Input structs to reduce allocations.
 var inputPool = sync.Pool{
 	New: func() interface{} { return &Input{} },
 }
 
+// outputPool is a sync.Pool of reusable Output structs to reduce allocations.
 var outputPool = sync.Pool{
 	New: func() interface{} { return &Output{} },
 }
 
+// shortURLBytesPool is a sync.Pool of reusable byte buffers used for
+// generating random short URL keys.
 var shortURLBytesPool = sync.Pool{
 	New: func() interface{} { return make([]byte, 6) },
 }
 
+// GetHandler handles GET requests to redirect to the original URL by short key.
+//
+// Expected URL pattern: GET /{id} where {id} is the short URL key.
+// On success it returns HTTP 307 Temporary Redirect with the Location header
+// set to the original URL. It also emits an audit event with action "follow".
 func GetHandler(w http.ResponseWriter, req *http.Request, repo storage.Repository, notifier *audit.Notifier) {
 	if req.Method != http.MethodGet {
 		http.Error(w, "Only GET method", http.StatusBadRequest)
@@ -77,6 +109,11 @@ func GetHandler(w http.ResponseWriter, req *http.Request, repo storage.Repositor
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
+// PostHandler handles plain-text POST requests to shorten a URL.
+//
+// Expected URL pattern: POST / with the original URL as plain-text body.
+// Returns HTTP 201 Created with the short URL as plain-text body.
+// Returns HTTP 409 Conflict if the original URL already exists.
 func PostHandler(w http.ResponseWriter, req *http.Request, config *config.Config, repo storage.Repository, notifier *audit.Notifier) {
 	if req.Method != http.MethodPost {
 		http.Error(w, "Only POST method", http.StatusBadRequest)
@@ -129,6 +166,12 @@ func PostHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 	w.Write([]byte(config.BaseURL + "/" + shortURL))
 }
 
+// JSONHandler handles JSON POST requests to shorten a URL.
+//
+// Expected URL pattern: POST /api/shorten with a JSON body containing
+// {"url": "https://example.com"}.
+// Returns HTTP 201 Created with a JSON body containing {"result": "https://shortener/abcd12"}.
+// Returns HTTP 409 Conflict if the original URL already exists.
 func JSONHandler(w http.ResponseWriter, req *http.Request, config *config.Config, repo storage.Repository, notifier *audit.Notifier) {
 	if req.Method != http.MethodPost {
 		http.Error(w, "Only POST method", http.StatusBadRequest)
@@ -198,6 +241,10 @@ func JSONHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 	w.Write(resp)
 }
 
+// PingHandler handles health-check requests.
+//
+// Expected URL pattern: GET /ping
+// Returns HTTP 200 OK if the storage backend is reachable, HTTP 500 otherwise.
 func PingHandler(w http.ResponseWriter, req *http.Request, repo storage.Repository) {
 	if req.Method != http.MethodGet {
 		http.Error(w, "Only GET method", http.StatusBadRequest)
@@ -212,6 +259,8 @@ func PingHandler(w http.ResponseWriter, req *http.Request, repo storage.Reposito
 	w.WriteHeader(http.StatusOK)
 }
 
+// GenerateShortURL generates a cryptographically secure random short URL key
+// using 6 bytes from crypto/rand, encoded as base62-friendly URL-safe base64.
 func GenerateShortURL() (string, error) {
 	bytes := shortURLBytesPool.Get().([]byte)
 	defer shortURLBytesPool.Put(bytes)
@@ -223,6 +272,14 @@ func GenerateShortURL() (string, error) {
 	return base64.URLEncoding.EncodeToString(bytes)[:8], nil
 }
 
+// BatchHandler handles batch URL shortening via JSON POST requests.
+//
+// Expected URL pattern: POST /api/shorten/batch with a JSON array body:
+// [
+//   {"correlation_id": "abc", "original_url": "https://example.com"},
+//   {"correlation_id": "def", "original_url": "https://golang.org"}
+// ]
+// Returns HTTP 201 Created with a JSON array of BatchOutput.
 func BatchHandler(w http.ResponseWriter, req *http.Request, config *config.Config, repo storage.Repository) {
 	if req.Method != http.MethodPost {
 		http.Error(w, "Only POST method", http.StatusBadRequest)
@@ -279,6 +336,11 @@ func BatchHandler(w http.ResponseWriter, req *http.Request, config *config.Confi
 	w.Write(resp)
 }
 
+// GetURLByUserHandler retrieves all URLs shortened by the authenticated user.
+//
+// Expected URL pattern: GET /api/user/urls
+// Returns HTTP 200 OK with a JSON array of UserURL entries, or HTTP 204 No
+// Content if the user has no shortened URLs.
 func GetURLByUserHandler(w http.ResponseWriter, req *http.Request, config *config.Config, repo storage.Repository) {
 	if req.Method != http.MethodGet {
 		http.Error(w, "Only GET method", http.StatusBadRequest)
@@ -313,11 +375,19 @@ func GetURLByUserHandler(w http.ResponseWriter, req *http.Request, config *confi
 	json.NewEncoder(w).Encode(urls)
 }
 
+// getUserID extracts the authenticated user ID from the request context.
+// Returns the userID and true if a valid cookie was present, or empty string and false otherwise.
 func getUserID(req *http.Request) (string, bool) {
 	userID, ok := req.Context().Value(auth.UserIDContextKey).(string)
 	return userID, ok
 }
 
+// DeleteURLsHandler asynchronously deletes URLs for the authenticated user.
+//
+// Expected URL pattern: DELETE /api/user/urls with a JSON array of short keys:
+// ["abc123", "def456"]
+// Returns HTTP 202 Accepted if the delete task was enqueued, or HTTP 400/401
+// on validation / auth errors.
 func DeleteURLsHandler(w http.ResponseWriter, req *http.Request, config *config.Config, repo storage.Repository, worker *Worker) {
 	if req.Method != http.MethodDelete {
 		http.Error(w, "Only DELETE method", http.StatusBadRequest)

@@ -1,3 +1,9 @@
+// Package server initializes the HTTP server for the URL shortener service.
+//
+// It sets up the routing layer using chi, wires up storage backends
+// (memory, file-based, PostgreSQL), configures middleware (logging, gzip
+// compression, cookie-based authentication), and starts listening for
+// incoming HTTP requests.
 package server
 
 import (
@@ -22,6 +28,29 @@ import (
 	"go.uber.org/zap"
 )
 
+// Start initializes the URL shortener HTTP server and blocks until a
+// termination signal (SIGINT / SIGTERM) is received.
+//
+// The function performs the following initialization steps:
+//   - Selects the storage backend (memory → file → PostgreSQL, highest priority wins)
+//   - Migrates the PostgreSQL schema if the database backend is used
+//   - Loads events from the file storage into the in-memory repository
+//   - Configures middleware: logging, gzip compression, cookie authentication
+//   - Registers all HTTP routes
+//   - Starts a background worker for asynchronous URL deletion
+//   - Sets up audit log receivers (file and/or HTTP)
+//   - Optionally serves pprof profiling endpoints under /debug/pprof/
+//
+// Routes:
+//
+//	GET    /{id}                — redirect to the original URL by short key
+//	POST   /                    — plain-text URL shortening
+//	POST   /api/shorten         — JSON URL shortening
+//	POST   /api/shorten/batch   — batch JSON URL shortening
+//	GET    /ping                — health check
+//	GET    /api/user/urls       — list all URLs for the current user
+//	DELETE /api/user/urls       — asynchronously delete URLs for the current user
+//	GET    /debug/pprof/*       — Go profiler endpoints (when enabled)
 func Start(config *config.Config) {
 	r := chi.NewRouter()
 

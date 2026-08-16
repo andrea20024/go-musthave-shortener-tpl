@@ -1,3 +1,15 @@
+// Package main is the entry point for the URL Shortener service with pprof
+// profiling enabled.
+//
+// It starts the HTTP server in a goroutine and leaves the main goroutine
+// blocked on a signal handler, allowing pprof endpoints to be accessed
+// at /debug/pprof/ during development.
+//
+// Usage:
+//
+//	go run ./profiler [flags]
+//
+// Flags: same as cmd/shortener, plus pprof is always available at /debug/pprof/.
 package main
 
 import (
