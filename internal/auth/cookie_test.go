@@ -184,7 +184,9 @@ func TestCookieMiddleware_NewRequest(t *testing.T) {
 	middleware.ServeHTTP(rec, req)
 
 	// Check that cookie was set
-	cookies := rec.Result().Cookies()
+	res := rec.Result()
+	defer res.Body.Close()
+	cookies := res.Cookies()
 	if len(cookies) == 0 {
 		t.Error("CookieMiddleware did not set any cookies")
 	}
@@ -249,7 +251,9 @@ func TestCookieMiddleware_InvalidCookie(t *testing.T) {
 	middleware.ServeHTTP(rec, req)
 
 	// Should have set a new valid cookie
-	cookies := rec.Result().Cookies()
+	res := rec.Result()
+	defer res.Body.Close()
+	cookies := res.Cookies()
 	if len(cookies) == 0 {
 		t.Error("CookieMiddleware did not set any cookies for invalid request")
 	}
