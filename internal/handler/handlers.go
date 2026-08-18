@@ -8,18 +8,15 @@
 //   - GET  /ping        — health check
 //   - GET  /api/user/urls — retrieve all URLs for the current user
 //   - DELETE /api/user/urls — asynchronously delete URLs for the current user
-//
-// Handlers use object pools (sync.Pool) for Input, Output, and byte buffers
-// to minimize garbage collector pressure under high load.
 package handlers
 
 import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	audit "github.com/andrea20024/go-musthave-shortener-tpl/internal/audit"
@@ -54,22 +51,6 @@ type BatchOutput struct {
 	CorrelationID string `json:"correlation_id"`
 	// ShortURL is the newly created short URL.
 	ShortURL string `json:"short_url"`
-}
-
-// inputPool is a sync.Pool of reusable Input structs to reduce allocations.
-var inputPool = sync.Pool{
-	New: func() interface{} { return &Input{} },
-}
-
-// outputPool is a sync.Pool of reusable Output structs to reduce allocations.
-var outputPool = sync.Pool{
-	New: func() interface{} { return &Output{} },
-}
-
-// shortURLBytesPool is a sync.Pool of reusable byte buffers used for
-// generating random short URL keys.
-var shortURLBytesPool = sync.Pool{
-	New: func() interface{} { return make([]byte, 6) },
 }
 
 // GetHandler handles GET requests to redirect to the original URL by short key.
@@ -120,13 +101,13 @@ func PostHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 		return
 	}
 
-	buf := make([]byte, 1024)
-	n, err := req.Body.Read(buf)
-	if err != nil && n == 0 {
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
 		http.Error(w, "Invalid body", http.StatusBadRequest)
 		return
 	}
-	url := string(buf[:n])
+	defer req.Body.Close()
+	url := string(body)
 
 	shortURL, err := GenerateShortURL()
 	if err != nil {
@@ -178,8 +159,7 @@ func JSONHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 		return
 	}
 
-	inputBody := inputPool.Get().(*Input)
-	defer inputPool.Put(inputBody)
+	inputBody := &Input{}
 	if err := json.NewDecoder(req.Body).Decode(inputBody); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -200,10 +180,8 @@ func JSONHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 		if repo.IsDuplicateError(err) {
 			existingKey, err := repo.GetKeyByURL(url)
 			if err == nil && existingKey != "" {
-				res := outputPool.Get().(*Output)
-				res.Result = config.BaseURL + "/" + existingKey
+				res := &Output{Result: config.BaseURL + "/" + existingKey}
 				resp, err := json.Marshal(res)
-				outputPool.Put(res)
 				if err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
@@ -227,10 +205,8 @@ func JSONHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 		})
 	}
 
-	res := outputPool.Get().(*Output)
-	res.Result = config.BaseURL + "/" + shortURL
+	res := &Output{Result: config.BaseURL + "/" + shortURL}
 	resp, err := json.Marshal(res)
-	outputPool.Put(res)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -260,16 +236,14 @@ func PingHandler(w http.ResponseWriter, req *http.Request, repo storage.Reposito
 }
 
 // GenerateShortURL generates a cryptographically secure random short URL key
-// using 6 bytes from crypto/rand, encoded as base62-friendly URL-safe base64.
+// using 6 bytes from crypto/rand, encoded as URL-safe base64.
 func GenerateShortURL() (string, error) {
-	bytes := shortURLBytesPool.Get().([]byte)
-	defer shortURLBytesPool.Put(bytes)
-
-	_, err := rand.Read(bytes)
+	b := make([]byte, 6)
+	_, err := rand.Read(b)
 	if err != nil {
 		return "", err
 	}
-	return base64.URLEncoding.EncodeToString(bytes)[:8], nil
+	return base64.URLEncoding.EncodeToString(b)[:8], nil
 }
 
 // BatchHandler handles batch URL shortening via JSON POST requests.

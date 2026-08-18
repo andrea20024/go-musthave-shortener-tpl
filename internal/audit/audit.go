@@ -9,6 +9,7 @@ package audit
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"sync"
@@ -30,32 +31,70 @@ type Observer interface {
 }
 
 // Notifier broadcasts audit events to all attached observers using the
-// observer pattern. Notify calls are dispatched asynchronously in separate
-// goroutines.
+// observer pattern. Events are queued in a buffered channel and processed
+// by a single worker goroutine to avoid unbounded goroutine growth.
 type Notifier struct {
 	observers []Observer
-	mu        sync.Mutex
+	mu        sync.RWMutex
+	events    chan Event
+	quit      chan struct{}
+	wg        sync.WaitGroup
 }
 
-// NewNotifier creates a new Notifier instance with no observers attached.
-// Use Attach to register receivers.
-func NewNotifier() *Notifier { return &Notifier{} }
+// NewNotifier creates a new Notifier instance with no observers attached..
+func NewNotifier() *Notifier {
+	return &Notifier{
+		events: make(chan Event, 100),
+		quit:   make(chan struct{}),
+	}
+}
 
 // Attach registers an Observer to receive audit events. The observer will be
-// called asynchronously for each event via its Notify method.
+// called for each event via its Notify method.
 func (n *Notifier) Attach(o Observer) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.observers = append(n.observers, o)
 }
 
-// NotifyAll broadcasts an Event to all attached observers in separate
-// goroutines.
+// Start launches the worker goroutine that processes events from the queue.
+func (n *Notifier) Start() {
+	n.wg.Add(1)
+	go n.worker()
+}
+
+// Stop gracefully shuts down the worker, waiting for all pending events to
+// be processed before returning.
+func (n *Notifier) Stop() {
+	close(n.quit)
+	n.wg.Wait()
+}
+
+// NotifyAll queues an Event for processing. If the queue is full, the event
+// is dropped and logged to stderr.
 func (n *Notifier) NotifyAll(e Event) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	for _, o := range n.observers {
-		go o.Notify(e)
+	select {
+	case n.events <- e:
+	default:
+		fmt.Fprintf(os.Stderr, "audit: event buffer full, dropping event\n")
+	}
+}
+
+// worker reads events from the channel and dispatches them to all observers
+// sequentially.
+func (n *Notifier) worker() {
+	defer n.wg.Done()
+	for {
+		select {
+		case <-n.quit:
+			return
+		case event := <-n.events:
+			n.mu.RLock()
+			for _, o := range n.observers {
+				o.Notify(event)
+			}
+			n.mu.RUnlock()
+		}
 	}
 }
 
@@ -79,8 +118,15 @@ func NewFileReceiver(path string) (*FileReceiver, error) {
 func (f *FileReceiver) Notify(e Event) {
 	f.m.Lock()
 	defer f.m.Unlock()
-	data, _ := json.Marshal(e)
-	f.w.Write(append(data, '\n'))
+	data, err := json.Marshal(e)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "audit: marshal error: %v\n", err)
+		return
+	}
+	_, err = f.w.Write(append(data, '\n'))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "audit: write error: %v\n", err)
+	}
 }
 
 // HTTPReceiver sends audit events to a remote HTTP endpoint via POST with
@@ -98,9 +144,15 @@ func NewHTTPReceiver(url string) *HTTPReceiver {
 
 // Notify sends the event as a JSON payload to the configured URL.
 func (h *HTTPReceiver) Notify(e Event) {
-	data, _ := json.Marshal(e)
-	resp, _ := h.client.Post(h.url, "application/json", bytes.NewReader(data))
-	if resp != nil {
-		resp.Body.Close()
+	data, err := json.Marshal(e)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "audit: marshal error: %v\n", err)
+		return
 	}
+	resp, err := h.client.Post(h.url, "application/json", bytes.NewReader(data))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "audit: http post error: %v\n", err)
+		return
+	}
+	defer resp.Body.Close()
 }

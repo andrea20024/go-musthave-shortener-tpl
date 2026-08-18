@@ -110,6 +110,7 @@ func Start(config *config.Config) {
 	worker := handlers.NewWorker(config.WorkerBufferSize, repo)
 
 	notifier := audit.NewNotifier()
+	notifier.Start()
 	if config.AuditFile != "" {
 		fileReceiver, err := audit.NewFileReceiver(config.AuditFile)
 		if err == nil {
@@ -170,5 +171,6 @@ func Start(config *config.Config) {
 	<-sig
 
 	worker.Shutdown()
+	notifier.Stop()
 	sugar.Info("Server stopped")
 }
