@@ -39,13 +39,13 @@ type Notifier struct {
 	events    chan Event
 	quit      chan struct{}
 	wg        sync.WaitGroup
+	startOnce sync.Once
 }
 
 // NewNotifier creates a new Notifier instance with no observers attached..
 func NewNotifier() *Notifier {
 	return &Notifier{
-		events: make(chan Event, 100),
-		quit:   make(chan struct{}),
+		quit: make(chan struct{}),
 	}
 }
 
@@ -57,22 +57,23 @@ func (n *Notifier) Attach(o Observer) {
 	n.observers = append(n.observers, o)
 }
 
-// Start launches the worker goroutine that processes events from the queue.
-func (n *Notifier) Start() {
-	n.wg.Add(1)
-	go n.worker()
-}
-
 // Stop gracefully shuts down the worker, waiting for all pending events to
 // be processed before returning.
 func (n *Notifier) Stop() {
-	close(n.quit)
-	n.wg.Wait()
+	if n.events != nil {
+		close(n.quit)
+		n.wg.Wait()
+	}
 }
 
 // NotifyAll queues an Event for processing. If the queue is full, the event
 // is dropped and logged to stderr.
 func (n *Notifier) NotifyAll(e Event) {
+	n.startOnce.Do(func() {
+		n.events = make(chan Event, 100)
+		n.wg.Add(1)
+		go n.worker()
+	})
 	select {
 	case n.events <- e:
 	default:
