@@ -2,20 +2,29 @@ module github.com/andrea20024/go-musthave-shortener-tpl
 
 go 1.25.0
 
-require github.com/stretchr/testify v1.11.1
+require (
+	github.com/golang-migrate/migrate/v4 v4.19.1
+	github.com/jackc/pgerrcode v0.0.0-20240316143900-6e2875d9b438
+	github.com/stretchr/testify v1.11.1
+	golang.org/x/tools v0.44.0
+	honnef.co/go/tools v0.7.0
+)
 
 require (
-	github.com/golang-migrate/migrate/v4 v4.19.1 // indirect
-	github.com/jackc/pgerrcode v0.0.0-20240316143900-6e2875d9b438 // indirect
+	github.com/BurntSushi/toml v1.4.1-0.20240526193622-a339e1f7089c // indirect
+	github.com/gostaticanalysis/analysisutil v0.7.1 // indirect
+	github.com/gostaticanalysis/comment v1.4.2 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
+	github.com/kisielk/errcheck v1.20.0 // indirect
 	github.com/lib/pq v1.10.9 // indirect
-	github.com/rakyll/hey v0.1.5 // indirect
 	github.com/rogpeppe/go-internal v1.15.0 // indirect
+	github.com/timakin/bodyclose v0.0.0-20260723120731-857993a2939c // indirect
 	go.uber.org/multierr v1.10.0 // indirect
-	golang.org/x/net v0.48.0 // indirect
-	golang.org/x/sync v0.19.0 // indirect
+	golang.org/x/exp/typeparams v0.0.0-20231108232855-2478ac86f678 // indirect
+	golang.org/x/mod v0.35.0 // indirect
+	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/text v0.33.0 // indirect
 )
 
