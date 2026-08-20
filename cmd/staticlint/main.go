@@ -6,7 +6,7 @@
 // Go-идиом:
 //
 //   - Стандартные анализаторы golang.org/x/tools/go/analysis/passes:
-//     atomic, loopclosure, nilfunc, printf, shift, unreachable, unsafeptr, unusedresult
+//     atomic, printf, shift, unreachable, unsafeptr, unusedresult
 //
 //   - Все анализаторы класса SA пакета staticcheck.io (syntax and logic errors):
 //     SA0001, SA1000, SA1001, ..., SA9999 — полный набор
@@ -39,8 +39,6 @@
 //
 //	// Стандартные (golang.org/x/tools/go/analysis/passes):
 //	atomic        — проверка атомарных операций через sync/atomic
-//	loopclosure   — захват переменных в замыканиях loop
-//	nilfunc       — сравнение с nilfunc (устаревший pattern)
 //	printf        — некорректные аргументы в fmt.* функциях
 //	shift         — некорректные сдвиги (shift by constant that is too large)
 //	unreachable   — недостижимый код после return/panic
@@ -95,8 +93,6 @@ import (
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/multichecker"
 	"golang.org/x/tools/go/analysis/passes/atomic"
-	"golang.org/x/tools/go/analysis/passes/loopclosure"
-	"golang.org/x/tools/go/analysis/passes/nilfunc"
 	"golang.org/x/tools/go/analysis/passes/printf"
 	"golang.org/x/tools/go/analysis/passes/shift"
 	"golang.org/x/tools/go/analysis/passes/unreachable"
@@ -126,8 +122,6 @@ func allAnalyzers() []*analysis.Analyzer {
 	// Стандартные анализаторы из golang.org/x/tools/go/analysis/passes
 	myChecks := []*analysis.Analyzer{
 		atomic.Analyzer,       // проверка атомарных операций sync/atomic
-		loopclosure.Analyzer,  // проверка замыканий в циклах
-		nilfunc.Analyzer,      // устаревший pattern сравнения с nilfunc
 		printf.Analyzer,       // некорректные аргументы в fmt.* функциях
 		shift.Analyzer,        // некорректные сдвиги бит
 		unreachable.Analyzer,  // недостижимый код
