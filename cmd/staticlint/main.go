@@ -1,51 +1,50 @@
-// Package main — точка входа для multichecker статического анализа кода проекта
-// URL Shortener.
+// Package main is the entry point for the multichecker static analysis tool
+// for the URL Shortener project.
 //
-// Multichecker объединяет несколько статических анализаторов для проверки
-// всего проекта на наличие типовых ошибок, anti-patterns и нарушений
-// Go-идиом:
+// Multichecker combines several static analyzers to check the entire project
+// for common errors, anti-patterns, and Go idiom violations:
 //
-//   - Стандартные анализаторы golang.org/x/tools/go/analysis/passes:
+//   - Standard golang.org/x/tools/go/analysis/passes analyzers:
 //     atomic, printf, shift, unreachable, unsafeptr, unusedresult
 //
-//   - Все анализаторы класса SA пакета staticcheck.io (syntax and logic errors):
-//     SA0001, SA1000, SA1001, ..., SA9999 — полный набор
+//   - All SA-class analyzers from staticcheck.io (syntax and logic errors):
+//     SA0001, SA1000, SA1001, ..., SA9999 — full set
 //
-//   - Анализаторы других классов staticcheck.io:
+//   - Other staticcheck.io analyzer classes:
 //     ST1000 (missing doc-comments), ST1003 (naming), ST1016 (qualifiers)
 //
-//   - Все анализаторы honnef.co/go/tools/simple (S1xxx — code simplification)
+//   - All analyzers from honnef.co/go/tools/simple (S1xxx — code simplification)
 //
-//   - Все анализаторы honnef.co/go/tools/stylecheck (STxxx — style violations)
+//   - All analyzers from honnef.co/go/tools/stylecheck (STxxx — style violations)
 //
-//   - Публичные анализаторы:
-//     bodyclose — проверка закрытия http.Response.Body после запроса
+//   - Public analyzers:
+//     bodyclose — checks http.Response.Body is closed after requests
 //
-//   - Кастомный анализатор noosexit:
-//     Запрещает прямой вызов os.Exit() в функции main() пакета main.
+//   - Custom noosexit analyzer:
+//     Prohibits direct os.Exit() calls in the main() function of the main package.
 //
-// Использование:
+// Usage:
 //
-//	# Проверить весь проект:
+//	# Check the entire project:
 //	go run cmd/staticlint/main.go ./...
 //
-//	# Проверить конкретный пакет:
+//	# Check a specific package:
 //	go run cmd/staticlint/main.go ./internal/...
 //
-//	# Проверить только cmd:
+//	# Check only cmd:
 //	go run cmd/staticlint/main.go ./cmd/...
 //
-// Список всех подключённых анализаторов:
+// List of all connected analyzers:
 //
-//	// Стандартные (golang.org/x/tools/go/analysis/passes):
-//	atomic        — проверка атомарных операций через sync/atomic
-//	printf        — некорректные аргументы в fmt.* функциях
-//	shift         — некорректные сдвиги (shift by constant that is too large)
-//	unreachable   — недостижимый код после return/panic
-//	unsafeptr     — невалидные unsafe.Pointer conversions
-//	unusedresult  — проигнорированные результаты функций (fmt.Fprintf и др.)
+//	// Standard (golang.org/x/tools/go/analysis/passes):
+//	atomic        — checks atomic operations via sync/atomic
+//	printf        — incorrect arguments in fmt.* functions
+//	shift         — incorrect bit shifts (shift by constant that is too large)
+//	unreachable   — unreachable code after return/panic
+//	unsafeptr     — invalid unsafe.Pointer conversions
+//	unusedresult  — ignored function results (fmt.Fprintf, etc.)
 //
-//	// Staticcheck SA (все синтаксические и логические анализаторы):
+//	// Staticcheck SA (all syntax and logic analyzers):
 //	SA1000 — syntax errors, deprecated calls, invalid regex, etc.
 //	SA2000 — unused or nil Go routine
 //	SA3000 — broken close on receive
@@ -61,7 +60,7 @@
 //	SA5001 — uninitialized struct
 //	SA5002 — Unused field
 //	SA5003 — Struct field tag is not well formed
-//	... и все остальные классы SA (SA6000-SA9999)
+//	... and all other SA classes (SA6000-SA9999)
 //
 //	// Staticcheck ST (style):
 //	ST1000 — package comment is missing
@@ -73,19 +72,19 @@
 //	S1000 — replace if-then-else with bool conversion
 //	S1001 — use copy for slice copy
 //	S1002 — compare abs instead of manual calculation
-//	... и все остальные S1xxx
+//	... and all other S1xxx
 //
 //	// Stylecheck (STxxx — style):
-//	ST1000-ST1028 — все стандартные проверки стиля кода
+//	ST1000-ST1028 — all standard style checks
 //
-//	// Публичные анализаторы:
-//	bodyclose   — проверка закрытия Response.Body после HTTP-запроса
+//	// Public analyzers:
+//	bodyclose   — checks Response.Body is closed after HTTP requests
 //
-//	// Кастомные:
-//	noosexit    — запрет os.Exit() в main.main() пакета main
+//	// Custom:
+//	noosexit    — prohibits os.Exit() in main.main() of the main package
 //
-// Для исправления найденных проблем смотрите сообщения линтера и рекомендации
-// в документации к каждому анализатору.
+// To fix found issues, review the linter messages and recommendations
+// in each analyzer's documentation.
 
 package main
 
@@ -106,42 +105,42 @@ import (
 	bodyclose "github.com/timakin/bodyclose/passes/bodyclose"
 )
 
-// allAnalyzers возвращает полный список анализаторов для multichecker.
+// allAnalyzers returns the full list of analyzers for multichecker.
 //
-// Функция собирает анализаторы из нескольких источников:
-// 1. Стандартные pass-анализаторы из golang.org/x/tools
-// 2. Все SA-анализаторы staticcheck (syntax & logic errors)
-// 3. Избранные ST-анализаторы staticcheck (style)
-// 4. Все S-анализаторы из honnef.co/go/tools/simple
-// 5. Все ST-анализаторы из honnef.co/go/tools/stylecheck
-// 6. Публичные анализаторы: errcheck, govet
-// 7. Кастомный анализатор noosexit
+// The function collects analyzers from several sources:
+// 1. Standard pass analyzers from golang.org/x/tools
+// 2. All SA analyzers from staticcheck (syntax & logic errors)
+// 3. Selected ST analyzers from staticcheck (style)
+// 4. All S analyzers from honnef.co/go/tools/simple
+// 5. All ST analyzers from honnef.co/go/tools/stylecheck
+// 6. Public analyzers: errcheck, govet
+// 7. Custom noosexit analyzer
 //
-// Возвращает: слайс []*analysis.Analyzer со всеми подключёнными анализаторами.
+// Returns: a slice []*analysis.Analyzer with all connected analyzers.
 func allAnalyzers() []*analysis.Analyzer {
-	// Стандартные анализаторы из golang.org/x/tools/go/analysis/passes
+	// Standard analyzers from golang.org/x/tools/go/analysis/passes
 	myChecks := []*analysis.Analyzer{
-		atomic.Analyzer,       // проверка атомарных операций sync/atomic
-		printf.Analyzer,       // некорректные аргументы в fmt.* функциях
-		shift.Analyzer,        // некорректные сдвиги бит
-		unreachable.Analyzer,  // недостижимый код
-		unsafeptr.Analyzer,    // невалидные unsafe.Pointer
-		unusedresult.Analyzer, // игнорируемые результаты функций
+		atomic.Analyzer,       // checks atomic operations via sync/atomic
+		printf.Analyzer,       // incorrect arguments in fmt.* functions
+		shift.Analyzer,        // incorrect bit shifts
+		unreachable.Analyzer,  // unreachable code
+		unsafeptr.Analyzer,    // invalid unsafe.Pointer
+		unusedresult.Analyzer, // ignored function results
 	}
 
-	// Все SA-анализаторы staticcheck (syntax and logic errors)
+	// All SA analyzers from staticcheck (syntax and logic errors)
 	for _, a := range staticcheck.Analyzers {
-		// Фильтруем только анализаторы класса SA (syntax & logic)
+		// Filter only SA-class analyzers (syntax & logic)
 		if a.Analyzer.Name[0] == 'S' && a.Analyzer.Name[1] == 'A' {
 			myChecks = append(myChecks, a.Analyzer)
 		}
 	}
 
-	// Дополнительные ST-анализаторы staticcheck (style violations)
+	// Additional ST analyzers from staticcheck (style violations)
 	for _, a := range staticcheck.Analyzers {
-		// ST1000 — missing doc-comments в package
+		// ST1000 — missing doc-comments in package
 		// ST1003 — naming conventions (snake_case vs PascalCase)
-		// ST1016 — useless type qualifiers (e.g. io.ReadCloser вместо Reader)
+		// ST1016 — useless type qualifiers (e.g. io.ReadCloser instead of Reader)
 		if a.Analyzer.Name == "ST1000" ||
 			a.Analyzer.Name == "ST1003" ||
 			a.Analyzer.Name == "ST1016" {
@@ -149,20 +148,20 @@ func allAnalyzers() []*analysis.Analyzer {
 		}
 	}
 
-	// Все анализаторы simplification (S1xxx)
+	// All simplification analyzers (S1xxx)
 	for _, a := range simple.Analyzers {
 		myChecks = append(myChecks, a.Analyzer)
 	}
 
-	// Все анализаторы stylecheck (STxxx)
+	// All stylecheck analyzers (STxxx)
 	for _, a := range stylecheck.Analyzers {
 		myChecks = append(myChecks, a.Analyzer)
 	}
 
-	// Публичные анализаторы
+	// Public analyzers
 	myChecks = append(myChecks, bodyclose.Analyzer)
 
-	// Кастомный анализатор: запрет os.Exit() в main.main()
+	// Custom analyzer: prohibit os.Exit() in main.main()
 	myChecks = append(myChecks, noosexit.Analyzer)
 
 	return myChecks

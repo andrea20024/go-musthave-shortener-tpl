@@ -9,6 +9,7 @@ import (
 
 // DeleteTask represents an asynchronous request to delete multiple URLs
 // owned by a specific user.
+// generate:reset
 type DeleteTask struct {
 	userID string
 	keys   []string

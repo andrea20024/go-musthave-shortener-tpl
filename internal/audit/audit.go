@@ -17,6 +17,7 @@ import (
 )
 
 // Event represents an audit log entry produced by the URL shortener.
+// generate:reset
 type Event struct {
 	Timestamp int64  `json:"ts"`
 	Action    string `json:"action"`

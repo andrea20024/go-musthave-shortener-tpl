@@ -1,13 +1,13 @@
-// Package noosexit реализует кастомный анализатор статического анализа кода Go,
-// который запрещает прямой вызов os.Exit() в функции main() пакета main.
+// Package noosexit implements a custom static analysis checker for Go that
+// prohibits direct os.Exit() calls in main() functions.
 //
-// Назначение: предотвращает аварийное завершение программы без корректной
-// обработки ошибок. Прямой вызов os.Exit() в main() обходит defer-функции,
-// что приводит к утечке ресурсов и пропуску graceful shutdown.
+// Purpose: prevents abrupt program termination without proper error handling.
+// Direct os.Exit() in main() bypasses defer functions, leading to resource
+// leaks and missing graceful shutdown.
 //
-// Рекомендация: вместо os.Exit(code) возвращайте код ошибки из main.
+// Recommendation: return an error code from main instead of os.Exit(code).
 //
-// Анализатор срабатывает только в пакете main для функции main().
+// The checker only triggers in the main package for the main() function.
 package noosexit
 
 import (
@@ -17,65 +17,60 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
-// Doc — подробное описание анализатора для вывода в help-сообщениях.
-const Doc = `noosexit проверяет отсутствие прямого вызова os.Exit() в функции main пакета main. Прямой вызов os.Exit обходит defer-функции, что может привести к утечке ресурсов и пропуску graceful shutdown. Рекомендуется возвращать код ошибки из main вместо os.Exit.`
+// Doc is a detailed description of the analyzer for help output.
+const Doc = `noosexit checks for direct os.Exit() calls in main.main(). Direct os.Exit() bypasses defer functions, which may lead to resource leaks and skipped graceful shutdown. Returning an error code from main is recommended instead of os.Exit.`
 
-// Analyzer — экземпляр анализатора, регистрируемый в multichecker.
+// Analyzer is the analyzer instance registered with multichecker.
 //
-// Analyzer настраивает имя, документацию и функцию run,
-// которая выполняет AST-обход для поиска вызовов os.Exit в main.main().
+// Analyzer configures the name, documentation, and run function,
+// which performs AST traversal to find os.Exit() calls in main.main().
 var Analyzer = &analysis.Analyzer{
 	Name: "noosexit",
 	Doc:  Doc,
 	Run:  run,
 }
 
-// run — основная функция анализатора.
+// run is the main analyzer function.
 //
-// Выполняет следующий алгоритм:
+// Algorithm:
+// 1. Checks if the current package is main (skips all other packages).
+// 2. Traverses all package files to find main() function declaration.
+// 3. If main() is found, inspects its AST body for os.Exit() calls.
+// 4. For each os.Exit() call, invokes pass.Reportf with:
+//   - file and line number of the violation
+//   - recommended replacement pattern
 //
-// 1. Проверяет, что текущий пакет — main (пропускает все другие пакеты).
-//
-// 2. Обходит все файлы пакета и ищет объявление функции main().
-//
-// 3. Если main() найдена, обходит её тело AST для поиска вызовов os.Exit().
-//
-// 4. Для каждого вызова os.Exit() вызывает pass.Reportf с указанием:
-//   - файла и номера строки нарушения
-//   - рекомендуемого паттерна замены
-//
-// Параметры: pass — контекст анализатора, содержащий AST пакета и информацию о файлах.
-// Возвращает: nil (анализатор не возвращает данных, только сообщения).
+// Parameters: pass — analyzer context containing the package AST and file info.
+// Returns: nil (the analyzer reports only messages, no return data).
 func run(pass *analysis.Pass) (interface{}, error) {
-	// Проверяем, что текущий пакет — main
-	// Анализатор игнорирует все другие пакеты (internal, cmd/profiler и т.д.)
+	// Skip all packages except main
 	if pass.Pkg.Name() != "main" {
 		return nil, nil
 	}
 
 	var mainFunc *ast.FuncDecl
 
-	// Находим функцию main() в файлах пакета
+	// Find the main() function in package files
 	for _, f := range pass.Files {
 		ast.Inspect(f, func(n ast.Node) bool {
 			if funcDecl, ok := n.(*ast.FuncDecl); ok {
 				if funcDecl.Name.Name == "main" {
 					mainFunc = funcDecl
-					return false // main найден, прекращаем обход
+					return false // main found, stop traversal
 				}
 			}
 			return true
 		})
 	}
 
-	// Если функция main не найдена — ничего не делать
+	// If main function is not found, do nothing
 	if mainFunc == nil {
 		return nil, nil
 	}
 
-	// Игнорируем временные файлы из go-build кэша
-	// multichecker.Main() сканирует временные файлы компиляции,
-	// которые тоже попадают в pass.Files
+	// Skip temporary files from go-build cache
+	// multichecker.Main() scans temporary compilation files
+	// which also end up in pass.Files
 	for _, f := range pass.Files {
 		pos := pass.Fset.Position(f.Pos())
 		if strings.Contains(pos.Filename, "go-build") {
@@ -83,32 +78,32 @@ func run(pass *analysis.Pass) (interface{}, error) {
 		}
 	}
 
-	// Обходим тело функции main() для поиска вызовов os.Exit()
+	// Traverse the main() function body to find os.Exit() calls
 	ast.Inspect(mainFunc.Body, func(n ast.Node) bool {
-		// Ищем только вызовы функций (CallExpr)
+		// Look for function calls only (CallExpr)
 		callExpr, ok := n.(*ast.CallExpr)
 		if !ok {
 			return true
 		}
 
-		// Проверяем, что это селекторный вызов (os.Exit)
+		// Check if it is a selector expression (os.Exit)
 		selectorExpr, ok := callExpr.Fun.(*ast.SelectorExpr)
 		if !ok {
 			return true
 		}
 
-		// Проверяем, что это package "os"
+		// Check that it is package "os"
 		ident, ok := selectorExpr.X.(*ast.Ident)
 		if !ok || ident.Name != "os" {
 			return true
 		}
 
-		// Проверяем, что это функция "Exit"
+		// Check that it is the function "Exit"
 		if selectorExpr.Sel.Name != "Exit" {
 			return true
 		}
 
-		// Нашли os.Exit() — сообщаем об ошибке
+		// Found os.Exit() — report the error
 		pos := pass.Fset.Position(callExpr.Pos())
 		pass.Reportf(
 			callExpr.Pos(),
