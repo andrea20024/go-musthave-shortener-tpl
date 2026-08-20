@@ -14,6 +14,7 @@ import "fmt"
 
 // UserURL represents a mapping between a short URL and its original URL
 // for a specific user.
+// generate:reset
 type UserURL struct {
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`

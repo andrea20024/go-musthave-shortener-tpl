@@ -22,6 +22,7 @@ import "fmt"
 
 // Config holds the application configuration loaded from environment
 // variables and command-line flags.
+// generate:reset
 type Config struct {
 	// Host is the network address the HTTP server listens on.
 	// Environment variable: SERVER_ADDRESS
