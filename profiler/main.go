@@ -1,28 +1,25 @@
-// Package main is the entry point for the URL Shortener service.
+// Package main is the entry point for the URL Shortener service with pprof
+// profiling enabled.
 //
-// It initializes the configuration from environment variables and command-line
-// flags, then starts the HTTP server with all configured middleware and routes.
+// It starts the HTTP server in a goroutine and leaves the main goroutine
+// blocked on a signal handler, allowing pprof endpoints to be accessed
+// at /debug/pprof/ during development.
 //
 // Usage:
 //
-//	go run ./cmd/shortener [flags]
+//	go run ./profiler [flags]
 //
-// Flags:
-//
-//	-a string        host address (default "localhost:8080")
-//	-b string        base URL for short links (default "http://localhost:8080")
-//	-f string        file storage path (optional)
-//	-d string        PostgreSQL DSN (optional)
-//	-worker-buffer int worker channel buffer size (default 100)
-//	-audit-file      file path for audit log
-//	-audit-url       HTTP URL for audit log
+// Flags: same as cmd/shortener, plus pprof is always available at /debug/pprof/.
 package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
-
-	"github.com/caarlos0/env/v6"
+	_ "net/http/pprof"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/andrea20024/go-musthave-shortener-tpl/internal/config"
 	"github.com/andrea20024/go-musthave-shortener-tpl/internal/server"
@@ -39,12 +36,18 @@ func main() {
 	flag.StringVar(&cfg.AuditFile, "audit-file", cfg.AuditFile, "audit file path")
 	flag.StringVar(&cfg.AuditURL, "audit-url", cfg.AuditURL, "audit URL")
 	flag.Parse()
-	env.Parse(cfg)
 
 	if err := config.Validate(cfg); err != nil {
-		//Можно и остановку поставить - log.Fatal(err)
 		log.Printf("Config validation error: %v", err)
 	}
 
-	server.Start(cfg)
+	go server.Start(cfg)
+
+	fmt.Println("Profiler server started on " + cfg.Host)
+	fmt.Println("pprof available at http://" + cfg.Host + "/debug/pprof/")
+	fmt.Println("Press Ctrl+C to stop")
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	<-sig
 }

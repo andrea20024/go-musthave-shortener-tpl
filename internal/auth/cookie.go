@@ -1,3 +1,10 @@
+// Package auth provides cookie-based user identification for the URL
+// shortener service.
+//
+// Each incoming request is assigned a unique user ID stored in an HMAC-signed
+// cookie. The user ID is propagated into the request context via
+// UserIDContextKey and can be retrieved by handlers to associate shortened URLs
+// with specific users.
 package auth
 
 import (
@@ -10,18 +17,30 @@ import (
 	"strings"
 )
 
+// CookieName is the name of the cookie used to store the user identifier.
 const CookieName = "userID"
 
+// contextKey is an unexported type used for context keys defined in this package.
+// This prevents collisions between keys defined in multiple packages.
 type contextKey string
 
+// UserIDContextKey is the context key under which the authenticated user ID
+// is stored in the request context.
 const UserIDContextKey contextKey = "userID"
 
 var key []byte
 
+// Init initializes the signing key used to verify and create user cookies.
+// This must be called during application startup with a sufficiently long,
+// cryptographically random secret.
 func Init(keyStr string) {
 	key = []byte(keyStr)
 }
 
+// CookieMiddleware is an HTTP middleware that creates or validates a user ID
+// cookie. On each request it generates a new user ID (if the cookie is missing
+// or invalid) or reuses the existing one. The resolved user ID is stored in the
+// request context under UserIDContextKey.
 func CookieMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		userID := getOrCreateUser(r, w)

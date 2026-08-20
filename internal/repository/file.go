@@ -1,3 +1,13 @@
+// Package storage provides file-based implementation of the Repository interface.
+//
+// This file contains:
+//   - Event        — JSON-serializable representation of a URL mapping event.
+//   - FileRepository — persistent storage backed by an append-only JSON file.
+//   - Consumer     — read-only scanner used to replay events from file storage.
+//
+// FileRepository implements thread safety via sync.RWMutex. Every Add, AddBatch,
+// DeleteUserURLs, and GetUserURLs operation is immediately flushed to disk as a
+// JSON event line.
 package storage
 
 import (
@@ -10,6 +20,7 @@ import (
 	"sync"
 )
 
+// Event represents a single URL mapping event for file storage persistence.
 type Event struct {
 	UUID        string `json:"uuid"`
 	ShortURL    string `json:"short_url"`
@@ -18,6 +29,7 @@ type Event struct {
 	IsDeleted   bool   `json:"is_deleted"`
 }
 
+// FileRepository implements the Repository interface using an append-only JSON file.
 type FileRepository struct {
 	mu       sync.RWMutex
 	filename string
@@ -26,11 +38,13 @@ type FileRepository struct {
 	deleted  map[string]bool
 }
 
+// Consumer provides sequential read access to events from a file-based storage.
 type Consumer struct {
 	file    *os.File
 	scanner *bufio.Scanner
 }
 
+// NewConsumer opens a file and creates a Consumer for reading events sequentially.
 func NewConsumer(filename string) (*Consumer, error) {
 	file, err := os.OpenFile(filename, os.O_RDONLY|os.O_CREATE, 0666)
 	if err != nil {
@@ -39,6 +53,7 @@ func NewConsumer(filename string) (*Consumer, error) {
 	return &Consumer{file: file, scanner: bufio.NewScanner(file)}, nil
 }
 
+// ReadEvent reads the next JSON event from the file. Returns io.EOF at end of file.
 func (c *Consumer) ReadEvent() (*Event, error) {
 	if !c.scanner.Scan() {
 		if err := c.scanner.Err(); err != nil {
@@ -54,10 +69,12 @@ func (c *Consumer) ReadEvent() (*Event, error) {
 	return &event, nil
 }
 
+// Close closes the underlying file handle.
 func (c *Consumer) Close() error {
 	return c.file.Close()
 }
 
+// NewFileRepository creates a FileRepository and loads all existing events from the file.
 func NewFileRepository(filename string) (*FileRepository, error) {
 	repo := &FileRepository{
 		filename: filename,
@@ -104,6 +121,7 @@ func (r *FileRepository) loadEvents() ([]Event, error) {
 	return events, scanner.Err()
 }
 
+// Add stores a URL mapping, checking for duplicates first.
 func (r *FileRepository) Add(key string, url string, userID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -126,6 +144,7 @@ func (r *FileRepository) Add(key string, url string, userID string) error {
 	return nil
 }
 
+// AddBatch stores multiple URL mappings, checking for duplicates.
 func (r *FileRepository) AddBatch(urls map[string]string, userID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -150,6 +169,7 @@ func (r *FileRepository) AddBatch(urls map[string]string, userID string) error {
 	return nil
 }
 
+// Get retrieves the original URL by short URL key, returning DeletedError if deleted.
 func (r *FileRepository) Get(key string) (string, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -164,6 +184,7 @@ func (r *FileRepository) Get(key string) (string, error) {
 	return "", fmt.Errorf("key not found: %s", key)
 }
 
+// GetKeyByURL finds the short URL key for a given original URL.
 func (r *FileRepository) GetKeyByURL(url string) (string, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -176,6 +197,7 @@ func (r *FileRepository) GetKeyByURL(url string) (string, error) {
 	return "", fmt.Errorf("url not found: %s", url)
 }
 
+// GetUserURLs retrieves all non-deleted URLs for a specific user.
 func (r *FileRepository) GetUserURLs(userID string) ([]UserURL, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -192,6 +214,7 @@ func (r *FileRepository) GetUserURLs(userID string) ([]UserURL, error) {
 	return urls, nil
 }
 
+// DeleteUserURLs marks the specified URLs as deleted for the given user.
 func (r *FileRepository) DeleteUserURLs(userID string, keys []string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -211,6 +234,7 @@ func (r *FileRepository) DeleteUserURLs(userID string, keys []string) error {
 	return nil
 }
 
+// GetDict returns a copy of the internal key-value map.
 func (r *FileRepository) GetDict() map[string]string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -222,6 +246,7 @@ func (r *FileRepository) GetDict() map[string]string {
 	return result
 }
 
+// Ping checks if the storage file exists and is accessible.
 func (r *FileRepository) Ping() error {
 	file, err := os.OpenFile(r.filename, os.O_RDONLY, 0666)
 	if err != nil {
@@ -231,16 +256,19 @@ func (r *FileRepository) Ping() error {
 	return nil
 }
 
+// IsDuplicateError checks if the error is a DuplicateError.
 func (r *FileRepository) IsDuplicateError(err error) bool {
 	var dupErr *DuplicateError
 	return errors.As(err, &dupErr) && dupErr.Error() == "duplicate"
 }
 
+// IsDeletedError checks if the error is a DeletedError.
 func (r *FileRepository) IsDeletedError(err error) bool {
 	var delErr *DeletedError
 	return errors.As(err, &delErr)
 }
 
+// writeFile appends a single event to the storage file.
 func (r *FileRepository) writeFile(event *Event) error {
 	file, err := os.OpenFile(r.filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
