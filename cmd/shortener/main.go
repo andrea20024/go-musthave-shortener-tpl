@@ -20,6 +20,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 
 	"github.com/caarlos0/env/v6"
@@ -28,7 +29,14 @@ import (
 	"github.com/andrea20024/go-musthave-shortener-tpl/internal/server"
 )
 
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
+)
+
 func main() {
+	printBuildInfo()
 	cfg := config.InitConfig()
 
 	flag.StringVar(&cfg.Host, "a", cfg.Host, "host")
@@ -47,4 +55,17 @@ func main() {
 	}
 
 	server.Start(cfg)
+}
+
+func printBuildInfo() {
+	fmt.Printf("Build version: %s\n", versionOrDefault(buildVersion))
+	fmt.Printf("Build date: %s\n", versionOrDefault(buildDate))
+	fmt.Printf("Build commit: %s\n", versionOrDefault(buildCommit))
+}
+
+func versionOrDefault(v string) string {
+	if v == "" {
+		return "N/A"
+	}
+	return v
 }
