@@ -22,6 +22,7 @@ import "fmt"
 
 // Config holds the application configuration loaded from environment
 // variables and command-line flags.
+// generate:reset
 type Config struct {
 	// Host is the network address the HTTP server listens on.
 	// Environment variable: SERVER_ADDRESS
@@ -82,6 +83,9 @@ func InitConfig() *Config {
 // Validate checks the configuration for required fields and returns an error
 // if validation fails. Currently it only checks that AuthSecret is non-empty.
 func Validate(cfg *Config) error {
+	if cfg == nil {
+		return fmt.Errorf("config is nil")
+	}
 	if cfg.AuthSecret == "" {
 		return fmt.Errorf("AUTH_SECRET is required")
 	}
