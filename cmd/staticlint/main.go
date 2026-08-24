@@ -5,7 +5,7 @@
 // for common errors, anti-patterns, and Go idiom violations:
 //
 //   - Standard golang.org/x/tools/go/analysis/passes analyzers:
-//     atomic, printf, shift, unreachable, unsafeptr, unusedresult
+//     atomic, printf, sqlrowserr, shift, unreachable, unsafeptr, unusedresult
 //
 //   - All SA-class analyzers from staticcheck.io (syntax and logic errors):
 //     SA0001, SA1000, SA1001, ..., SA9999 — full set
@@ -39,6 +39,7 @@
 //	// Standard (golang.org/x/tools/go/analysis/passes):
 //	atomic        — checks atomic operations via sync/atomic
 //	printf        — incorrect arguments in fmt.* functions
+//	sqlrowserr    — SQL Rows.Err() unchecked
 //	shift         — incorrect bit shifts (shift by constant that is too large)
 //	unreachable   — unreachable code after return/panic
 //	unsafeptr     — invalid unsafe.Pointer conversions
@@ -94,6 +95,7 @@ import (
 	"golang.org/x/tools/go/analysis/passes/atomic"
 	"golang.org/x/tools/go/analysis/passes/printf"
 	"golang.org/x/tools/go/analysis/passes/shift"
+	"golang.org/x/tools/go/analysis/passes/sqlrowserr"
 	"golang.org/x/tools/go/analysis/passes/unreachable"
 	"golang.org/x/tools/go/analysis/passes/unsafeptr"
 	"golang.org/x/tools/go/analysis/passes/unusedresult"
@@ -122,6 +124,7 @@ func allAnalyzers() []*analysis.Analyzer {
 	myChecks := []*analysis.Analyzer{
 		atomic.Analyzer,       // checks atomic operations via sync/atomic
 		printf.Analyzer,       // incorrect arguments in fmt.* functions
+		sqlrowserr.Analyzer,   // SQL Rows.Err() unchecked
 		shift.Analyzer,        // incorrect bit shifts
 		unreachable.Analyzer,  // unreachable code
 		unsafeptr.Analyzer,    // invalid unsafe.Pointer
