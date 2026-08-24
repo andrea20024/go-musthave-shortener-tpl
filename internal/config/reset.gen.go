@@ -4,6 +4,9 @@ package config
 
 // Reset resets all fields of Config to zero values.
 func (r *Config) Reset() {
+	if r == nil {
+		return
+	}
 	r.Host = ""
 	r.BaseURL = ""
 	r.FilePath = ""

@@ -4,6 +4,9 @@ package storage
 
 // Reset resets all fields of UserURL to zero values.
 func (r *UserURL) Reset() {
+	if r == nil {
+		return
+	}
 	r.ShortURL = ""
 	r.OriginalURL = ""
 }

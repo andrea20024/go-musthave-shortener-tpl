@@ -4,6 +4,9 @@ package handlers
 
 // Reset resets all fields of DeleteTask to zero values.
 func (r *DeleteTask) Reset() {
+	if r == nil {
+		return
+	}
 	r.userID = ""
 	r.keys = r.keys[:0]
 }

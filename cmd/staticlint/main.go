@@ -66,7 +66,7 @@
 //	ST1000 — package comment is missing
 //	ST1001 — missing or useless doc-comment
 //	ST1003 — wrong naming convention
-//	ST1016 — useless qualifier
+//	ST1016 — useless type qualifier
 //
 //	// Simple (S1xxx — simplification):
 //	S1000 — replace if-then-else with bool conversion
@@ -113,7 +113,7 @@ import (
 // 3. Selected ST analyzers from staticcheck (style)
 // 4. All S analyzers from honnef.co/go/tools/simple
 // 5. All ST analyzers from honnef.co/go/tools/stylecheck
-// 6. Public analyzers: errcheck, govet
+// 6. Public analyzers: bodyclose
 // 7. Custom noosexit analyzer
 //
 // Returns: a slice []*analysis.Analyzer with all connected analyzers.

@@ -12,7 +12,6 @@ package noosexit
 
 import (
 	"go/ast"
-	"strings"
 
 	"golang.org/x/tools/go/analysis"
 )
@@ -66,16 +65,6 @@ func run(pass *analysis.Pass) (interface{}, error) {
 	// If main function is not found, do nothing
 	if mainFunc == nil {
 		return nil, nil
-	}
-
-	// Skip temporary files from go-build cache
-	// multichecker.Main() scans temporary compilation files
-	// which also end up in pass.Files
-	for _, f := range pass.Files {
-		pos := pass.Fset.Position(f.Pos())
-		if strings.Contains(pos.Filename, "go-build") {
-			return nil, nil
-		}
 	}
 
 	// Traverse the main() function body to find os.Exit() calls

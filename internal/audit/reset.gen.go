@@ -4,6 +4,9 @@ package audit
 
 // Reset resets all fields of Event to zero values.
 func (r *Event) Reset() {
+	if r == nil {
+		return
+	}
 	r.Timestamp = 0
 	r.Action = ""
 	r.UserID = ""

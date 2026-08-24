@@ -19,7 +19,6 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"go/ast"
 	"go/token"
@@ -89,37 +88,16 @@ func run() error {
 func collectStructs(pkg *packages.Package) []structInfo {
 	var result []structInfo
 
-	// Map: filename -> tag line numbers
-	fileTagLines := make(map[string]map[int]bool)
-	for _, filename := range pkg.GoFiles {
-		if strings.HasSuffix(filename, ".gen.go") {
-			continue
-		}
-		tagLines := findTagLines(filename)
-		if len(tagLines) > 0 {
-			fileTagLines[filename] = tagLines
-		}
-	}
-
-	// Map: filename -> *ast.File from pkg.Syntax
-	fileToAST := make(map[string]*ast.File)
-	for _, sf := range pkg.Syntax {
-		if sf.Package.IsValid() {
-			filename := pkg.Fset.Position(sf.Package).Filename
-			fileToAST[filename] = sf
-		}
-	}
-
-	// For each file with tags, find structs
-	for filename, tagLines := range fileTagLines {
-		astFile := fileToAST[filename]
-		if astFile == nil {
-			continue
-		}
-
-		for _, decl := range astFile.Decls {
+	for _, file := range pkg.Syntax {
+		for _, decl := range file.Decls {
 			genDecl, ok := decl.(*ast.GenDecl)
 			if !ok || genDecl.Tok != token.TYPE {
+				continue
+			}
+
+			// GenDecl.Doc contains comments directly before the type declaration.
+			// This is the most reliable way to associate comments with declarations.
+			if genDecl.Doc == nil || !hasResetTag(genDecl.Doc) {
 				continue
 			}
 
@@ -129,13 +107,7 @@ func collectStructs(pkg *packages.Package) []structInfo {
 					continue
 				}
 
-				_, ok = typeSpec.Type.(*ast.StructType)
-				if !ok {
-					continue
-				}
-
-				typeLine := pkg.Fset.Position(typeSpec.Name.Pos()).Line
-				if !hasTagBeforeLine(typeLine, tagLines) {
+				if _, ok = typeSpec.Type.(*ast.StructType); !ok {
 					continue
 				}
 
@@ -157,35 +129,11 @@ func collectStructs(pkg *packages.Package) []structInfo {
 	return result
 }
 
-// findTagLines finds all lines with the // generate:reset tag in a file.
-func findTagLines(filename string) map[int]bool {
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil
-	}
-	defer file.Close()
-
-	lines := make(map[int]bool)
-	scanner := bufio.NewScanner(file)
-	lineNum := 0
-	for scanner.Scan() {
-		lineNum++
-		text := strings.TrimSpace(scanner.Text())
-		if strings.HasPrefix(text, "//") {
-			text = strings.TrimPrefix(text, "//")
-			text = strings.TrimSpace(text)
-			if text == resetTag {
-				lines[lineNum] = true
-			}
-		}
-	}
-	return lines
-}
-
-// hasTagBeforeLine checks if there is a tag within N lines before the given line.
-func hasTagBeforeLine(typeLine int, tagLines map[int]bool) bool {
-	for tl := range tagLines {
-		if tl < typeLine && typeLine-tl <= 3 {
+// hasResetTag checks if an ast.CommentGroup contains the // generate:reset tag.
+func hasResetTag(doc *ast.CommentGroup) bool {
+	for _, comment := range doc.List {
+		text := strings.TrimSpace(strings.TrimPrefix(comment.Text, "//"))
+		if text == resetTag {
 			return true
 		}
 	}
@@ -223,7 +171,6 @@ func writeResetFile(pkg *packages.Package, structs []structInfo) error {
 
 	for _, s := range structs {
 		sb.WriteString(generateResetMethod(s))
-		sb.WriteString("\n")
 	}
 
 	genFile := filepath.Join(pkg.Dir, "reset.gen.go")
@@ -236,6 +183,7 @@ func generateResetMethod(s structInfo) string {
 
 	sb.WriteString(fmt.Sprintf("// Reset resets all fields of %s to zero values.\n", s.name))
 	sb.WriteString(fmt.Sprintf("func (r *%s) Reset() {\n", s.name))
+	sb.WriteString("\tif r == nil {\n\t\treturn\n\t}\n")
 
 	for _, f := range s.fields {
 		sb.WriteString(generateFieldReset(f))
@@ -263,9 +211,18 @@ func generateFieldReset(f fieldInfo) string {
 		return fmt.Sprintf("\tclear(r.%s)\n", f.name)
 	case *types.Pointer:
 		elem := t.Elem()
-		switch elem.(type) {
+		switch elem := elem.(type) {
 		case *types.Basic:
-			return fmt.Sprintf("\tif r.%s != nil {\n\t\t*r.%s = 0\n\t}\n", f.name, f.name)
+			var zero string
+			switch elem.Kind() {
+			case types.String:
+				zero = "\"\""
+			case types.Bool:
+				zero = "false"
+			default:
+				zero = "0"
+			}
+			return fmt.Sprintf("\tif r.%s != nil {\n\t\t*r.%s = %s\n\t}\n", f.name, f.name, zero)
 		case *types.Struct:
 			return fmt.Sprintf("\tif r.%s != nil {\n\t\tr.%s.Reset()\n\t}\n", f.name, f.name)
 		default:
