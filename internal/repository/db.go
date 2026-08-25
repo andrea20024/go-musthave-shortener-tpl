@@ -155,6 +155,14 @@ func (r *dbRepository) IsDeletedError(err error) bool {
 	return errors.As(err, &delErr)
 }
 
+// Shutdown gracefully closes the database repository.
+func (r *dbRepository) Shutdown() error {
+	if r.db != nil {
+		return r.db.Close()
+	}
+	return nil
+}
+
 // Init connects to PostgreSQL, runs migrations, and returns a Repository.
 func Init(conn string) Repository {
 	db, err := sql.Open("pgx", conn)

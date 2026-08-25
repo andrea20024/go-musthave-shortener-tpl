@@ -53,6 +53,9 @@ type Repository interface {
 
 	// IsDeletedError reports whether err is a DeletedError.
 	IsDeletedError(err error) bool
+
+	// Shutdown gracefully closes the storage backend.
+	Shutdown() error
 }
 
 // DuplicateError is returned when attempting to add a URL that already exists

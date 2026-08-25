@@ -223,5 +223,9 @@ func Start(config *config.Config) {
 	worker.Shutdown()
 	notifier.Stop()
 
+	if err := repo.Shutdown(); err != nil {
+		sugar.Errorf("Storage shutdown error: %v", err)
+	}
+
 	sugar.Info("Server stopped")
 }

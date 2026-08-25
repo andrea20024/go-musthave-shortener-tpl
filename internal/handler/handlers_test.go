@@ -421,3 +421,7 @@ func (m *mockRepoForPing) IsDuplicateError(err error) bool {
 func (m *mockRepoForPing) IsDeletedError(err error) bool {
 	return false
 }
+
+func (m *mockRepoForPing) Shutdown() error {
+	return nil
+}
