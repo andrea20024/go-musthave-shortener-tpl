@@ -19,12 +19,14 @@
 //	-s               enable HTTPS
 //	-tls-cert        path to TLS certificate file
 //	-tls-key         path to TLS key file
+//	-c, -config      path to JSON config file
 package main
 
 import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/caarlos0/env/v6"
 
@@ -42,6 +44,8 @@ func main() {
 	printBuildInfo()
 	cfg := config.InitConfig()
 
+	configFile := flag.String("c", "", "path to JSON config file")
+	configFileAlt := flag.String("config", "", "path to JSON config file")
 	flag.StringVar(&cfg.Host, "a", cfg.Host, "host")
 	flag.StringVar(&cfg.BaseURL, "b", cfg.BaseURL, "base url")
 	flag.StringVar(&cfg.FilePath, "f", cfg.FilePath, "file path")
@@ -53,6 +57,69 @@ func main() {
 	flag.StringVar(&cfg.TLSKeyFile, "tls-key", cfg.TLSKeyFile, "TLS key file path")
 	flag.BoolVar(&cfg.EnableHTTPS, "s", cfg.EnableHTTPS, "enable HTTPS")
 	flag.Parse()
+
+	// Determine config file path from flags or env var CONFIG
+	cfgFile := *configFile
+	if cfgFile == "" {
+		cfgFile = *configFileAlt
+	}
+	if cfgFile == "" {
+		cfgFile = os.Getenv("CONFIG")
+	}
+
+	// Load JSON config (lowest priority, before flags and env vars)
+	// Flags and env vars will override JSON values
+	if cfgFile != "" {
+		// Save flag-overridden values
+		flagValues := map[string]string{
+			"Host":      cfg.Host,
+			"BaseURL":   cfg.BaseURL,
+			"FilePath":  cfg.FilePath,
+			"DB":        cfg.DB,
+			"AuditFile": cfg.AuditFile,
+			"AuditURL":  cfg.AuditURL,
+		}
+		flagInts := map[string]int{
+			"WorkerBufferSize": cfg.WorkerBufferSize,
+		}
+		flagBools := map[string]bool{
+			"EnableHTTPS": cfg.EnableHTTPS,
+		}
+
+		// Reset to defaults and load JSON
+		*cfg = *config.InitConfig()
+
+		if err := config.LoadConfigFromJSON(cfg, cfgFile); err != nil {
+			log.Fatalf("Failed to load config file: %v", err)
+		}
+
+		// Restore flag-overridden values (flags have highest priority)
+		if flagValues["Host"] != "" {
+			cfg.Host = flagValues["Host"]
+		}
+		if flagValues["BaseURL"] != "" {
+			cfg.BaseURL = flagValues["BaseURL"]
+		}
+		if flagValues["FilePath"] != "" {
+			cfg.FilePath = flagValues["FilePath"]
+		}
+		if flagValues["DB"] != "" {
+			cfg.DB = flagValues["DB"]
+		}
+		if flagValues["AuditFile"] != "" {
+			cfg.AuditFile = flagValues["AuditFile"]
+		}
+		if flagValues["AuditURL"] != "" {
+			cfg.AuditURL = flagValues["AuditURL"]
+		}
+		if flagInts["WorkerBufferSize"] > 0 {
+			cfg.WorkerBufferSize = flagInts["WorkerBufferSize"]
+		}
+		if flagBools["EnableHTTPS"] {
+			cfg.EnableHTTPS = true
+		}
+	}
+
 	env.Parse(cfg)
 
 	if err := config.Validate(cfg); err != nil {

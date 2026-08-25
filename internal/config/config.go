@@ -4,7 +4,8 @@
 // Configuration is loaded from the following sources in order (higher priority first):
 //  1. Command-line flags (highest priority)
 //  2. Environment variables
-//  3. Hardcoded defaults
+//  3. JSON config file (lowest priority)
+//  4. Hardcoded defaults
 //
 // Supported environment variables:
 //
@@ -17,9 +18,14 @@
 //	AUDIT_FILE       — path for file-based audit log
 //	AUDIT_URL        — URL for HTTP-based audit log
 //	ENABLE_HTTPS     — enable TLS (default: false)
+//	CONFIG           — path to JSON config file
 package config
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
 
 // Config holds the application configuration loaded from environment
 // variables and command-line flags.
@@ -90,6 +96,7 @@ func InitConfig() *Config {
 		AuditFile:        "audit.txt",
 		AuditURL:         "http://localhost:5001/audit",
 		StoreType:        "memory",
+		EnableHTTPS:      false,
 	}
 }
 
@@ -102,5 +109,62 @@ func Validate(cfg *Config) error {
 	if cfg.AuthSecret == "" {
 		return fmt.Errorf("AUTH_SECRET is required")
 	}
+	return nil
+}
+
+// fileConfig is the JSON structure for file-based configuration.
+// Only fields set in InitConfig are supported.
+type fileConfig struct {
+	ServerAddress    string `json:"server_address"`
+	BaseURL          string `json:"base_url"`
+	FileStoragePath  string `json:"file_storage_path"`
+	DatabaseDSN      string `json:"database_dsn"`
+	WorkerBufferSize int    `json:"worker_buffer_size"`
+	AuditFile        string `json:"audit_file"`
+	AuditURL         string `json:"audit_url"`
+	EnableHTTPS      bool   `json:"enable_https"`
+}
+
+// LoadConfigFromJSON reads configuration from a JSON file and applies it
+// to the provided Config struct. Only non-empty values from the file are applied.
+func LoadConfigFromJSON(cfg *Config, filename string) error {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("read config file: %w", err)
+	}
+
+	var fc fileConfig
+	if err := json.Unmarshal(data, &fc); err != nil {
+		return fmt.Errorf("parse config file: %w", err)
+	}
+
+	if fc.ServerAddress != "" {
+		cfg.Host = fc.ServerAddress
+	}
+	if fc.BaseURL != "" {
+		cfg.BaseURL = fc.BaseURL
+	}
+	if fc.FileStoragePath != "" {
+		cfg.FilePath = fc.FileStoragePath
+	}
+	if fc.DatabaseDSN != "" {
+		cfg.DB = fc.DatabaseDSN
+	}
+	if fc.WorkerBufferSize > 0 {
+		cfg.WorkerBufferSize = fc.WorkerBufferSize
+	}
+	if fc.AuditFile != "" {
+		cfg.AuditFile = fc.AuditFile
+	}
+	if fc.AuditURL != "" {
+		cfg.AuditURL = fc.AuditURL
+	}
+	if fc.EnableHTTPS {
+		cfg.EnableHTTPS = true
+	}
+
 	return nil
 }
