@@ -7,12 +7,14 @@
 package server
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"os"
 	"os/signal"
 	"runtime"
 	"syscall"
+	"time"
 
 	"net/http/pprof"
 
@@ -23,6 +25,7 @@ import (
 	handlers "github.com/andrea20024/go-musthave-shortener-tpl/internal/handler"
 	logger "github.com/andrea20024/go-musthave-shortener-tpl/internal/logger"
 	storage "github.com/andrea20024/go-musthave-shortener-tpl/internal/repository"
+	svc "github.com/andrea20024/go-musthave-shortener-tpl/internal/service"
 
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
@@ -46,11 +49,17 @@ import (
 //	GET    /{id}                — redirect to the original URL by short key
 //	POST   /                    — plain-text URL shortening
 //	POST   /api/shorten         — JSON URL shortening
-//	POST   /api/shorten/batch   — batch JSON URL shortening
+//	POST   /api/shorten/batch   — batch JSON shortening
 //	GET    /ping                — health check
 //	GET    /api/user/urls       — list all URLs for the current user
 //	DELETE /api/user/urls       — asynchronously delete URLs for the current user
 //	GET    /debug/pprof/*       — Go profiler endpoints (when enabled)
+//
+// HTTPS Support:
+//
+//	When config.EnableHTTPS is true, the server starts via http.ListenAndServeTLS()
+//	using certificates from config.TLSCertFile and config.TLSKeyFile.
+//	EnableHTTPS can be set via command-line flag "-s" or environment variable "ENABLE_HTTPS".
 func Start(config *config.Config) {
 	r := chi.NewRouter()
 
@@ -159,17 +168,60 @@ func Start(config *config.Config) {
 		pprof.Index(w, r)
 	})
 
+	srv := &http.Server{
+		Addr:         config.Host,
+		Handler:      r,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
 	go func() {
-		if err := http.ListenAndServe(config.Host, r); err != nil {
+		var err error
+		if config.EnableHTTPS {
+			if config.TLSCertFile == "" || config.TLSKeyFile == "" {
+				sugar.Info("TLS certificates not specified, generating self-signed certificates...")
+				if err := svc.GenerateSelfSignedCert("server.crt", "server.key"); err != nil {
+					sugar.Fatalf("Failed to generate TLS certificate: %v", err)
+				}
+				config.TLSCertFile = "server.crt"
+				config.TLSKeyFile = "server.key"
+			}
+
+			// Verify certificate files exist
+			if _, err := os.Stat(config.TLSCertFile); os.IsNotExist(err) {
+				sugar.Fatalf("TLS certificate file not found: %s", config.TLSCertFile)
+			}
+			if _, err := os.Stat(config.TLSKeyFile); os.IsNotExist(err) {
+				sugar.Fatalf("TLS key file not found: %s", config.TLSKeyFile)
+			}
+
+			sugar.Infow("Starting HTTPS server", "addr", config.Host)
+			err = srv.ListenAndServeTLS(config.TLSCertFile, config.TLSKeyFile)
+		} else {
+			sugar.Infow("Starting HTTP server", "addr", config.Host)
+			err = srv.ListenAndServe()
+		}
+		if err != nil && err != http.ErrServerClosed {
 			sugar.Fatalf("Server error: %v", err)
 		}
 	}()
 
 	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 	<-sig
+
+	sugar.Info("Shutting down server...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		sugar.Errorf("Server forced to shutdown: %v", err)
+	}
 
 	worker.Shutdown()
 	notifier.Stop()
+
 	sugar.Info("Server stopped")
 }

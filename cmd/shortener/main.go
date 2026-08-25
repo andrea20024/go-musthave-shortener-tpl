@@ -16,6 +16,9 @@
 //	-worker-buffer int worker channel buffer size (default 100)
 //	-audit-file      file path for audit log
 //	-audit-url       HTTP URL for audit log
+//	-s               enable HTTPS
+//	-tls-cert        path to TLS certificate file
+//	-tls-key         path to TLS key file
 package main
 
 import (
@@ -46,6 +49,9 @@ func main() {
 	flag.IntVar(&cfg.WorkerBufferSize, "worker-buffer", cfg.WorkerBufferSize, "worker buffer size")
 	flag.StringVar(&cfg.AuditFile, "audit-file", cfg.AuditFile, "audit file path")
 	flag.StringVar(&cfg.AuditURL, "audit-url", cfg.AuditURL, "audit URL")
+	flag.StringVar(&cfg.TLSCertFile, "tls-cert", cfg.TLSCertFile, "TLS certificate file path")
+	flag.StringVar(&cfg.TLSKeyFile, "tls-key", cfg.TLSKeyFile, "TLS key file path")
+	flag.BoolVar(&cfg.EnableHTTPS, "s", cfg.EnableHTTPS, "enable HTTPS")
 	flag.Parse()
 	env.Parse(cfg)
 

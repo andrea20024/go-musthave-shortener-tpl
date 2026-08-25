@@ -1,10 +1,10 @@
 // Package config provides application configuration initialization and
 // validation utilities.
 //
-// Configuration is loaded from the following sources in order:
-//   - Environment variables (via github.com/caarlos0/env/v6)
-//   - Command-line flags (overriding environment defaults)
-//   - Hardcoded defaults
+// Configuration is loaded from the following sources in order (higher priority first):
+//  1. Command-line flags (highest priority)
+//  2. Environment variables
+//  3. Hardcoded defaults
 //
 // Supported environment variables:
 //
@@ -16,6 +16,7 @@
 //	WORKER_BUFFER_SIZE — size of the async delete worker queue (default: 100)
 //	AUDIT_FILE       — path for file-based audit log
 //	AUDIT_URL        — URL for HTTP-based audit log
+//	ENABLE_HTTPS     — enable TLS (default: false)
 package config
 
 import "fmt"
@@ -59,6 +60,18 @@ type Config struct {
 	// AuditURL is the HTTP URL used as an audit log receiver.
 	// Environment variable: AUDIT_URL
 	AuditURL string `env:"AUDIT_URL"`
+
+	// EnableHTTPS enables TLS for the HTTP server.
+	// Controlled by command-line flag "-s" or environment variable "ENABLE_HTTPS".
+	EnableHTTPS bool `env:"ENABLE_HTTPS"`
+
+	// TLSCertFile is the path to the TLS certificate file.
+	// Command-line flag: -tls-cert
+	TLSCertFile string
+
+	// TLSKeyFile is the path to the TLS private key file.
+	// Command-line flag: -tls-key
+	TLSKeyFile string
 
 	// StoreType indicates which storage backend is active ("memory", "file", or "db").
 	StoreType string
