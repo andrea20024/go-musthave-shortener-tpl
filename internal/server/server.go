@@ -8,6 +8,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -177,24 +178,20 @@ func Start(config *config.Config) {
 
 	go func() {
 		var err error
-		if config.EnableHTTPS {
-			if config.TLSCertFile == "" || config.TLSKeyFile == "" {
-				sugar.Fatal("HTTPS enabled but TLS certificate/key files not specified. Use cmd/gen_tls to generate them, or set -tls-cert and -tls-key flags.")
-			}
 
-			if _, err := os.Stat(config.TLSCertFile); os.IsNotExist(err) {
-				sugar.Fatalf("TLS certificate file not found: %s", config.TLSCertFile)
-			}
-			if _, err := os.Stat(config.TLSKeyFile); os.IsNotExist(err) {
-				sugar.Fatalf("TLS key file not found: %s", config.TLSKeyFile)
-			}
+		certFile, keyFile, tlsErr := prepareTLS(config)
+		if tlsErr != nil {
+			sugar.Fatalf("TLS preparation error: %v", tlsErr)
+		}
 
+		if certFile != "" {
 			sugar.Infow("Starting HTTPS server", "addr", config.Host)
-			err = srv.ListenAndServeTLS(config.TLSCertFile, config.TLSKeyFile)
+			err = srv.ListenAndServeTLS(certFile, keyFile)
 		} else {
 			sugar.Infow("Starting HTTP server", "addr", config.Host)
 			err = srv.ListenAndServe()
 		}
+
 		if err != nil && err != http.ErrServerClosed {
 			sugar.Fatalf("Server error: %v", err)
 		}
@@ -221,4 +218,25 @@ func Start(config *config.Config) {
 	}
 
 	sugar.Info("Server stopped")
+}
+
+// TLS certificate preparation
+func prepareTLS(config *config.Config) (certFile, keyFile string, err error) {
+	if !config.EnableHTTPS {
+		return "", "", nil
+	}
+
+	if config.TLSCertFile == "" || config.TLSKeyFile == "" {
+		return "", "", fmt.Errorf("HTTPS enabled but TLS certificate/key files not specified; " +
+			"use cmd/gen_tls to generate them, or set -tls-cert and -tls-key flags")
+	}
+
+	if _, err := os.Stat(config.TLSCertFile); os.IsNotExist(err) {
+		return "", "", fmt.Errorf("TLS certificate file not found: %s", config.TLSCertFile)
+	}
+	if _, err := os.Stat(config.TLSKeyFile); os.IsNotExist(err) {
+		return "", "", fmt.Errorf("TLS key file not found: %s", config.TLSKeyFile)
+	}
+
+	return config.TLSCertFile, config.TLSKeyFile, nil
 }
