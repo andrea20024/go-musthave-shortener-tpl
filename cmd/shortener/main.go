@@ -72,12 +72,14 @@ func main() {
 	if cfgFile != "" {
 		// Save flag-overridden values
 		flagValues := map[string]string{
-			"Host":      cfg.Host,
-			"BaseURL":   cfg.BaseURL,
-			"FilePath":  cfg.FilePath,
-			"DB":        cfg.DB,
-			"AuditFile": cfg.AuditFile,
-			"AuditURL":  cfg.AuditURL,
+			"Host":        cfg.Host,
+			"BaseURL":     cfg.BaseURL,
+			"FilePath":    cfg.FilePath,
+			"DB":          cfg.DB,
+			"AuditFile":   cfg.AuditFile,
+			"AuditURL":    cfg.AuditURL,
+			"TLSCertFile": cfg.TLSCertFile,
+			"TLSKeyFile":  cfg.TLSKeyFile,
 		}
 		flagInts := map[string]int{
 			"WorkerBufferSize": cfg.WorkerBufferSize,

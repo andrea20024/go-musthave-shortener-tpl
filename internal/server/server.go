@@ -25,7 +25,6 @@ import (
 	handlers "github.com/andrea20024/go-musthave-shortener-tpl/internal/handler"
 	logger "github.com/andrea20024/go-musthave-shortener-tpl/internal/logger"
 	storage "github.com/andrea20024/go-musthave-shortener-tpl/internal/repository"
-	svc "github.com/andrea20024/go-musthave-shortener-tpl/internal/service"
 
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
@@ -180,15 +179,9 @@ func Start(config *config.Config) {
 		var err error
 		if config.EnableHTTPS {
 			if config.TLSCertFile == "" || config.TLSKeyFile == "" {
-				sugar.Info("TLS certificates not specified, generating self-signed certificates...")
-				if err := svc.GenerateSelfSignedCert("server.crt", "server.key"); err != nil {
-					sugar.Fatalf("Failed to generate TLS certificate: %v", err)
-				}
-				config.TLSCertFile = "server.crt"
-				config.TLSKeyFile = "server.key"
+				sugar.Fatal("HTTPS enabled but TLS certificate/key files not specified. Use cmd/gen_tls to generate them, or set -tls-cert and -tls-key flags.")
 			}
 
-			// Verify certificate files exist
 			if _, err := os.Stat(config.TLSCertFile); os.IsNotExist(err) {
 				sugar.Fatalf("TLS certificate file not found: %s", config.TLSCertFile)
 			}

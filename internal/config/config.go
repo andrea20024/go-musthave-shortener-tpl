@@ -123,6 +123,8 @@ type fileConfig struct {
 	AuditFile        string `json:"audit_file"`
 	AuditURL         string `json:"audit_url"`
 	EnableHTTPS      bool   `json:"enable_https"`
+	TLSCertFile      string `json:"tls_cert_file"`
+	TLSKeyFile       string `json:"tls_key_file"`
 }
 
 // LoadConfigFromJSON reads configuration from a JSON file and applies it
@@ -164,6 +166,12 @@ func LoadConfigFromJSON(cfg *Config, filename string) error {
 	}
 	if fc.EnableHTTPS {
 		cfg.EnableHTTPS = true
+	}
+	if fc.TLSCertFile != "" {
+		cfg.TLSCertFile = fc.TLSCertFile
+	}
+	if fc.TLSKeyFile != "" {
+		cfg.TLSKeyFile = fc.TLSKeyFile
 	}
 
 	return nil

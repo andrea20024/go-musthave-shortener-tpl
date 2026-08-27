@@ -1,9 +1,19 @@
-// Package service provides business logic and utility functions for the URL
-// shortener application.
+// Package main is a utility for generating self-signed TLS certificates.
 //
-// It contains service layers for core operations such as URL storage,
-// certificate generation, and other domain-specific logic.
-package service
+// Generates an RSA 2048-bit key pair and a self-signed X.509 certificate
+// valid for "localhost" and "127.0.0.1" with Subject Alternative Names.
+//
+// Usage:
+//
+//	go run ./cmd/gen_tls/...
+//	go run ./cmd/gen_tls/... -o certs
+//	go run ./cmd/gen_tls/... -days 365
+//
+// Output files:
+//
+//	certs/server.crt  — PEM certificate
+//	certs/server.key  — PEM private key
+package main
 
 import (
 	"crypto/rand"
@@ -11,12 +21,44 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"flag"
 	"fmt"
 	"math/big"
 	"net"
 	"os"
+	"path/filepath"
 	"time"
 )
+
+var (
+	outputDir = flag.String("o", "certs", "output directory for certificate files")
+	days      = flag.Int("days", 365, "certificate validity period in days")
+)
+
+func main() {
+	flag.Parse()
+
+	if *days <= 0 {
+		fmt.Fprintf(os.Stderr, "error: days must be positive\n")
+		os.Exit(1)
+	}
+
+	if err := os.MkdirAll(*outputDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	certPath := filepath.Join(*outputDir, "server.crt")
+	keyPath := filepath.Join(*outputDir, "server.key")
+
+	if err := GenerateSelfSignedCert(certPath, keyPath); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("certificate: %s\n", certPath)
+	fmt.Printf("private key: %s\n", keyPath)
+}
 
 // GenerateSelfSignedCert creates a self-signed TLS certificate and key for localhost.
 //
