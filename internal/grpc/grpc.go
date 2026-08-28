@@ -31,6 +31,12 @@ import (
 
 const authorizationMetadata = "authorization"
 
+// contextKey is a custom type for context keys to avoid collisions.
+type contextKey string
+
+// userID is the context key for the user ID.
+const userID contextKey = "userID"
+
 // Server implements the gRPC ShortenerService.
 type Server struct {
 	pb.UnimplementedShortenerServiceServer
@@ -72,13 +78,13 @@ func authInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServe
 	// Extract userID from "Bearer <token>" or raw token format.
 	token := strings.TrimPrefix(authValues[0], "Bearer ")
 
-	ctx = context.WithValue(ctx, "userID", token)
+	ctx = context.WithValue(ctx, userID, token)
 	return handler(ctx, req)
 }
 
 // getUserIDFromContext extracts the user ID from the gRPC context.
 func getUserIDFromContext(ctx context.Context) (string, error) {
-	userID, ok := ctx.Value("userID").(string)
+	userID, ok := ctx.Value(userID).(string)
 	if !ok || userID == "" {
 		return "", errors.New("user ID not found in context")
 	}
