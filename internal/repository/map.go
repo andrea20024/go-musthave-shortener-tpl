@@ -147,3 +147,9 @@ func (r *MapRepository) IsDeletedError(err error) bool {
 	var delErr *DeletedError
 	return errors.As(err, &delErr)
 }
+
+// Shutdown gracefully closes the in-memory storage.
+// No data persistence is needed as MapRepository is in-memory only.
+func (r *MapRepository) Shutdown() error {
+	return nil
+}

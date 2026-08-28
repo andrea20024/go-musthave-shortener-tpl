@@ -1,10 +1,11 @@
 // Package config provides application configuration initialization and
 // validation utilities.
 //
-// Configuration is loaded from the following sources in order:
-//   - Environment variables (via github.com/caarlos0/env/v6)
-//   - Command-line flags (overriding environment defaults)
-//   - Hardcoded defaults
+// Configuration is loaded from the following sources in order (higher priority first):
+//  1. Command-line flags (highest priority)
+//  2. Environment variables
+//  3. JSON config file (lowest priority)
+//  4. Hardcoded defaults
 //
 // Supported environment variables:
 //
@@ -16,9 +17,19 @@
 //	WORKER_BUFFER_SIZE — size of the async delete worker queue (default: 100)
 //	AUDIT_FILE       — path for file-based audit log
 //	AUDIT_URL        — URL for HTTP-based audit log
+//	ENABLE_HTTPS     — enable TLS (default: false)
+//	CONFIG           — path to JSON config file
 package config
 
-import "fmt"
+import (
+	"encoding/json"
+	"flag"
+	"fmt"
+	"os"
+	"strconv"
+
+	"github.com/caarlos0/env/v6"
+)
 
 // Config holds the application configuration loaded from environment
 // variables and command-line flags.
@@ -60,6 +71,18 @@ type Config struct {
 	// Environment variable: AUDIT_URL
 	AuditURL string `env:"AUDIT_URL"`
 
+	// EnableHTTPS enables TLS for the HTTP server.
+	// Controlled by command-line flag "-s" or environment variable "ENABLE_HTTPS".
+	EnableHTTPS bool `env:"ENABLE_HTTPS"`
+
+	// TLSCertFile is the path to the TLS certificate file.
+	// Command-line flag: -tls-cert
+	TLSCertFile string
+
+	// TLSKeyFile is the path to the TLS private key file.
+	// Command-line flag: -tls-key
+	TLSKeyFile string
+
 	// StoreType indicates which storage backend is active ("memory", "file", or "db").
 	StoreType string
 }
@@ -77,6 +100,7 @@ func InitConfig() *Config {
 		AuditFile:        "audit.txt",
 		AuditURL:         "http://localhost:5001/audit",
 		StoreType:        "memory",
+		EnableHTTPS:      false,
 	}
 }
 
@@ -90,4 +114,172 @@ func Validate(cfg *Config) error {
 		return fmt.Errorf("AUTH_SECRET is required")
 	}
 	return nil
+}
+
+// fileConfig is the JSON structure for file-based configuration.
+// Only fields set in InitConfig are supported.
+type fileConfig struct {
+	ServerAddress    string `json:"server_address"`
+	BaseURL          string `json:"base_url"`
+	FileStoragePath  string `json:"file_storage_path"`
+	DatabaseDSN      string `json:"database_dsn"`
+	WorkerBufferSize int    `json:"worker_buffer_size"`
+	AuditFile        string `json:"audit_file"`
+	AuditURL         string `json:"audit_url"`
+	EnableHTTPS      bool   `json:"enable_https"`
+	TLSCertFile      string `json:"tls_cert_file"`
+	TLSKeyFile       string `json:"tls_key_file"`
+}
+
+// LoadConfigFromJSON reads configuration from a JSON file and applies it
+// to the provided Config struct. Only non-empty values from the file are applied.
+func LoadConfigFromJSON(cfg *Config, filename string) error {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("read config file: %w", err)
+	}
+
+	var fc fileConfig
+	if err := json.Unmarshal(data, &fc); err != nil {
+		return fmt.Errorf("parse config file: %w", err)
+	}
+
+	if fc.ServerAddress != "" {
+		cfg.Host = fc.ServerAddress
+	}
+	if fc.BaseURL != "" {
+		cfg.BaseURL = fc.BaseURL
+	}
+	if fc.FileStoragePath != "" {
+		cfg.FilePath = fc.FileStoragePath
+	}
+	if fc.DatabaseDSN != "" {
+		cfg.DB = fc.DatabaseDSN
+	}
+	if fc.WorkerBufferSize > 0 {
+		cfg.WorkerBufferSize = fc.WorkerBufferSize
+	}
+	if fc.AuditFile != "" {
+		cfg.AuditFile = fc.AuditFile
+	}
+	if fc.AuditURL != "" {
+		cfg.AuditURL = fc.AuditURL
+	}
+	if fc.EnableHTTPS {
+		cfg.EnableHTTPS = true
+	}
+	if fc.TLSCertFile != "" {
+		cfg.TLSCertFile = fc.TLSCertFile
+	}
+	if fc.TLSKeyFile != "" {
+		cfg.TLSKeyFile = fc.TLSKeyFile
+	}
+
+	return nil
+}
+
+// Load initializes configuration from defaults, JSON config file, environment
+// variables, and command-line flags. The priority order (lowest to highest) is:
+//
+//  1. Hardcoded defaults (InitConfig)
+//  2. JSON config file
+//  3. Command-line flags
+//  4. Environment variables (highest)
+func Load() (*Config, error) {
+	cfg := InitConfig()
+
+	// Register all flags using traditional flag.*Var so flag.Visit works.
+	configFile := flag.String("c", "", "path to JSON config file")
+	configFileAlt := flag.String("config", "", "path to JSON config file")
+
+	flag.StringVar(&cfg.Host, "a", cfg.Host, "host")
+	flag.StringVar(&cfg.BaseURL, "b", cfg.BaseURL, "base url")
+	flag.StringVar(&cfg.FilePath, "f", cfg.FilePath, "file path")
+	flag.StringVar(&cfg.DB, "d", cfg.DB, "database")
+	flag.IntVar(&cfg.WorkerBufferSize, "worker-buffer", cfg.WorkerBufferSize, "worker buffer size")
+	flag.StringVar(&cfg.AuditFile, "audit-file", cfg.AuditFile, "audit file path")
+	flag.StringVar(&cfg.AuditURL, "audit-url", cfg.AuditURL, "audit URL")
+	flag.StringVar(&cfg.TLSCertFile, "tls-cert", cfg.TLSCertFile, "TLS certificate file path")
+	flag.StringVar(&cfg.TLSKeyFile, "tls-key", cfg.TLSKeyFile, "TLS key file path")
+	flag.BoolVar(&cfg.EnableHTTPS, "s", cfg.EnableHTTPS, "enable HTTPS")
+
+	flag.Parse()
+
+	// Track which command-line flags were explicitly set by the user.
+	// Save their values — we need them after resetting to defaults.
+	visited := make(map[string]bool)
+	var savedWorkerBufferSize int
+	flag.Visit(func(f *flag.Flag) {
+		visited[f.Name] = true
+		if f.Name == "worker-buffer" {
+			n, err := strconv.Atoi(f.Value.String())
+			if err == nil {
+				savedWorkerBufferSize = n
+			}
+		}
+	})
+
+	// Determine config file path from flags or CONFIG env var
+	cfgFile := *configFile
+	if cfgFile == "" {
+		cfgFile = *configFileAlt
+	}
+	if cfgFile == "" {
+		cfgFile = os.Getenv("CONFIG")
+	}
+
+	// Reset to defaults and load JSON config
+	*cfg = *InitConfig()
+
+	if cfgFile != "" {
+		if err := LoadConfigFromJSON(cfg, cfgFile); err != nil {
+			return nil, fmt.Errorf("load config from %s: %w", cfgFile, err)
+		}
+	}
+
+	// Apply explicitly set command-line flags
+	if visited["a"] {
+		cfg.Host = flag.Lookup("a").Value.String()
+	}
+	if visited["b"] {
+		cfg.BaseURL = flag.Lookup("b").Value.String()
+	}
+	if visited["f"] {
+		cfg.FilePath = flag.Lookup("f").Value.String()
+	}
+	if visited["d"] {
+		cfg.DB = flag.Lookup("d").Value.String()
+	}
+	if visited["worker-buffer"] {
+		cfg.WorkerBufferSize = savedWorkerBufferSize
+	}
+	if visited["audit-file"] {
+		cfg.AuditFile = flag.Lookup("audit-file").Value.String()
+	}
+	if visited["audit-url"] {
+		cfg.AuditURL = flag.Lookup("audit-url").Value.String()
+	}
+	if visited["tls-cert"] {
+		cfg.TLSCertFile = flag.Lookup("tls-cert").Value.String()
+	}
+	if visited["tls-key"] {
+		cfg.TLSKeyFile = flag.Lookup("tls-key").Value.String()
+	}
+	if visited["s"] {
+		cfg.EnableHTTPS = flag.Lookup("s").Value.(flag.Getter).Get().(bool)
+	}
+
+	// Apply environment variables (highest priority)
+	if err := env.Parse(cfg); err != nil {
+		return nil, fmt.Errorf("parse env vars: %w", err)
+	}
+
+	if err := Validate(cfg); err != nil {
+		return nil, fmt.Errorf("validate config: %w", err)
+	}
+
+	return cfg, nil
 }

@@ -268,6 +268,12 @@ func (r *FileRepository) IsDeletedError(err error) bool {
 	return errors.As(err, &delErr)
 }
 
+// Shutdown is a no-op. FileRepository persists data on every write operation,
+// so there is nothing to flush or close on shutdown.
+func (r *FileRepository) Shutdown() error {
+	return nil
+}
+
 // writeFile appends a single event to the storage file.
 func (r *FileRepository) writeFile(event *Event) error {
 	file, err := os.OpenFile(r.filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)

@@ -1,0 +1,10 @@
+{
+    "server_address": "localhost:8080",
+    "base_url": "http://localhost:8080",
+    "file_storage_path": "storage.json",
+    "database_dsn": "host=localhost port=5434 user=loader password=1234 dbname=truecode_db sslmode=disable",
+    "worker_buffer_size": 100,
+    "audit_file": "audit.txt",
+    "audit_url": "http://localhost:5001/audit",
+    "enable_https": false
+}
