@@ -23,6 +23,7 @@ import (
 	auth "github.com/andrea20024/go-musthave-shortener-tpl/internal/auth"
 	compress "github.com/andrea20024/go-musthave-shortener-tpl/internal/compress"
 	config "github.com/andrea20024/go-musthave-shortener-tpl/internal/config"
+	grpc "github.com/andrea20024/go-musthave-shortener-tpl/internal/grpc"
 	handlers "github.com/andrea20024/go-musthave-shortener-tpl/internal/handler"
 	logger "github.com/andrea20024/go-musthave-shortener-tpl/internal/logger"
 	storage "github.com/andrea20024/go-musthave-shortener-tpl/internal/repository"
@@ -197,6 +198,14 @@ func Start(config *config.Config) {
 
 		if err != nil && err != http.ErrServerClosed {
 			sugar.Fatalf("Server error: %v", err)
+		}
+	}()
+
+	// Start gRPC server
+	go func() {
+		sugar.Infow("Starting gRPC server", "addr", config.GRPCPort)
+		if err := grpc.StartGRPCServer(config.GRPCPort, repo, config.BaseURL); err != nil {
+			sugar.Errorf("gRPC server error: %v", err)
 		}
 	}()
 

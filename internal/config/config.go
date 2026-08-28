@@ -90,6 +90,11 @@ type Config struct {
 	// Environment variable: TRUSTED_SUBNET
 	// Command-line flag: -t
 	TrustedSubnet string `env:"TRUSTED_SUBNET"`
+
+	// GRPCPort is the network address the gRPC server listens on.
+	// Environment variable: GRPC_PORT
+	// Command-line flag: -grpc-port
+	GRPCPort string `env:"GRPC_PORT"`
 }
 
 // InitConfig returns a Config instance populated with default values.
@@ -106,7 +111,7 @@ func InitConfig() *Config {
 		AuditURL:         "http://localhost:5001/audit",
 		StoreType:        "memory",
 		EnableHTTPS:      false,
-		TrustedSubnet:    "127.0.0.1/32",
+		GRPCPort:         ":50051",
 	}
 }
 
@@ -216,6 +221,7 @@ func Load() (*Config, error) {
 	flag.StringVar(&cfg.TLSKeyFile, "tls-key", cfg.TLSKeyFile, "TLS key file path")
 	flag.BoolVar(&cfg.EnableHTTPS, "s", cfg.EnableHTTPS, "enable HTTPS")
 	flag.StringVar(&cfg.TrustedSubnet, "t", cfg.TrustedSubnet, "trusted subnet CIDR")
+	flag.StringVar(&cfg.GRPCPort, "grpc-port", cfg.GRPCPort, "gRPC server port")
 
 	flag.Parse()
 
@@ -288,6 +294,9 @@ func Load() (*Config, error) {
 	}
 	if visited["t"] {
 		cfg.TrustedSubnet = savedTrustedSubnet
+	}
+	if visited["grpc-port"] {
+		cfg.GRPCPort = flag.Lookup("grpc-port").Value.String()
 	}
 
 	// Apply environment variables (highest priority)
