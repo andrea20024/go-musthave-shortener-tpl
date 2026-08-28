@@ -425,3 +425,7 @@ func (m *mockRepoForPing) IsDeletedError(err error) bool {
 func (m *mockRepoForPing) Shutdown() error {
 	return nil
 }
+
+func (m *mockRepoForPing) Stats() (int, int, error) {
+	return 0, 0, nil
+}
