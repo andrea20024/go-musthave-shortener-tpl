@@ -7,6 +7,7 @@ package storage
 // The Init function handles database connection and automatic schema migration.
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 
@@ -161,6 +162,25 @@ func (r *dbRepository) Shutdown() error {
 		return r.db.Close()
 	}
 	return nil
+}
+
+// Stats returns the count of non-deleted URLs and distinct users.
+func (r *dbRepository) Stats() (int, int, error) {
+	var urls int
+	err := r.db.QueryRowContext(context.Background(),
+		"SELECT COUNT(*) FROM urls WHERE is_deleted = false").Scan(&urls)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	var users int
+	err = r.db.QueryRowContext(context.Background(),
+		"SELECT COUNT(DISTINCT user_id) FROM urls WHERE is_deleted = false AND user_id != ''").Scan(&users)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return urls, users, nil
 }
 
 // Init connects to PostgreSQL, runs migrations, and returns a Repository.

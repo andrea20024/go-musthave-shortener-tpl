@@ -155,6 +155,9 @@ func Start(config *config.Config) {
 	r.Delete("/api/user/urls", func(w http.ResponseWriter, r *http.Request) {
 		handlers.DeleteURLsHandler(w, r, config, repo, worker)
 	})
+	r.Get("/api/internal/stats", func(w http.ResponseWriter, r *http.Request) {
+		handlers.StatsHandler(w, r, repo, config.TrustedSubnet)
+	})
 
 	// profiler
 	r.HandleFunc("/debug/pprof/heap", func(w http.ResponseWriter, r *http.Request) {

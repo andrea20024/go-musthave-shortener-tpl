@@ -85,6 +85,11 @@ type Config struct {
 
 	// StoreType indicates which storage backend is active ("memory", "file", or "db").
 	StoreType string
+
+	// TrustedSubnet is a CIDR string used to restrict access to internal endpoints.
+	// Environment variable: TRUSTED_SUBNET
+	// Command-line flag: -t
+	TrustedSubnet string `env:"TRUSTED_SUBNET"`
 }
 
 // InitConfig returns a Config instance populated with default values.
@@ -101,6 +106,7 @@ func InitConfig() *Config {
 		AuditURL:         "http://localhost:5001/audit",
 		StoreType:        "memory",
 		EnableHTTPS:      false,
+		TrustedSubnet:    "127.0.0.1/32",
 	}
 }
 
@@ -129,6 +135,7 @@ type fileConfig struct {
 	EnableHTTPS      bool   `json:"enable_https"`
 	TLSCertFile      string `json:"tls_cert_file"`
 	TLSKeyFile       string `json:"tls_key_file"`
+	TrustedSubnet    string `json:"trusted_subnet"`
 }
 
 // LoadConfigFromJSON reads configuration from a JSON file and applies it
@@ -177,6 +184,9 @@ func LoadConfigFromJSON(cfg *Config, filename string) error {
 	if fc.TLSKeyFile != "" {
 		cfg.TLSKeyFile = fc.TLSKeyFile
 	}
+	if fc.TrustedSubnet != "" {
+		cfg.TrustedSubnet = fc.TrustedSubnet
+	}
 
 	return nil
 }
@@ -205,6 +215,7 @@ func Load() (*Config, error) {
 	flag.StringVar(&cfg.TLSCertFile, "tls-cert", cfg.TLSCertFile, "TLS certificate file path")
 	flag.StringVar(&cfg.TLSKeyFile, "tls-key", cfg.TLSKeyFile, "TLS key file path")
 	flag.BoolVar(&cfg.EnableHTTPS, "s", cfg.EnableHTTPS, "enable HTTPS")
+	flag.StringVar(&cfg.TrustedSubnet, "t", cfg.TrustedSubnet, "trusted subnet CIDR")
 
 	flag.Parse()
 
@@ -212,6 +223,7 @@ func Load() (*Config, error) {
 	// Save their values — we need them after resetting to defaults.
 	visited := make(map[string]bool)
 	var savedWorkerBufferSize int
+	var savedTrustedSubnet string
 	flag.Visit(func(f *flag.Flag) {
 		visited[f.Name] = true
 		if f.Name == "worker-buffer" {
@@ -219,6 +231,9 @@ func Load() (*Config, error) {
 			if err == nil {
 				savedWorkerBufferSize = n
 			}
+		}
+		if f.Name == "t" {
+			savedTrustedSubnet = f.Value.String()
 		}
 	})
 
@@ -270,6 +285,9 @@ func Load() (*Config, error) {
 	}
 	if visited["s"] {
 		cfg.EnableHTTPS = flag.Lookup("s").Value.(flag.Getter).Get().(bool)
+	}
+	if visited["t"] {
+		cfg.TrustedSubnet = savedTrustedSubnet
 	}
 
 	// Apply environment variables (highest priority)

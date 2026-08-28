@@ -56,6 +56,9 @@ type Repository interface {
 
 	// Shutdown gracefully closes the storage backend.
 	Shutdown() error
+
+	// Stats returns the number of non-deleted URLs and the number of distinct users.
+	Stats() (int, int, error)
 }
 
 // DuplicateError is returned when attempting to add a URL that already exists
