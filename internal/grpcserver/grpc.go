@@ -16,9 +16,11 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"strings"
 
+	auth "github.com/andrea20024/go-musthave-shortener-tpl/internal/auth"
 	storage "github.com/andrea20024/go-musthave-shortener-tpl/internal/repository"
 	pb "github.com/andrea20024/go-musthave-shortener-tpl/proto"
 
@@ -49,17 +51,24 @@ func NewServer(repo storage.Repository, baseURL string) *Server {
 	return &Server{repo: repo, baseURL: baseURL}
 }
 
-// StartGRPCServer starts the gRPC server on the given address.
-func StartGRPCServer(addr string, repo storage.Repository, baseURL string) error {
+// StartGRPCServer creates and starts the gRPC server on the given address.
+// The server runs in a background goroutine; call GracefulStop() to shut it down.
+func StartGRPCServer(addr string, repo storage.Repository, baseURL string) (*grpc.Server, error) {
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	s := grpc.NewServer(grpc.UnaryInterceptor(authInterceptor))
 	pb.RegisterShortenerServiceServer(s, NewServer(repo, baseURL))
 
-	return s.Serve(lis)
+	go func() {
+		if err := s.Serve(lis); err != nil && err != grpc.ErrServerStopped {
+			log.Printf("gRPC server error: %v", err)
+		}
+	}()
+
+	return s, nil
 }
 
 // authInterceptor extracts the user ID from the "authorization" metadata
@@ -78,7 +87,12 @@ func authInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServe
 	// Extract userID from "Bearer <token>" or raw token format.
 	token := strings.TrimPrefix(authValues[0], "Bearer ")
 
-	ctx = context.WithValue(ctx, userID, token)
+	userIDFromToken, valid := auth.VerifyToken(token)
+	if !valid {
+		return nil, status.Error(codes.Unauthenticated, "invalid token")
+	}
+
+	ctx = context.WithValue(ctx, userID, userIDFromToken)
 	return handler(ctx, req)
 }
 

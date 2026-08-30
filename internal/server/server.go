@@ -23,7 +23,7 @@ import (
 	auth "github.com/andrea20024/go-musthave-shortener-tpl/internal/auth"
 	compress "github.com/andrea20024/go-musthave-shortener-tpl/internal/compress"
 	config "github.com/andrea20024/go-musthave-shortener-tpl/internal/config"
-	grpc "github.com/andrea20024/go-musthave-shortener-tpl/internal/grpc"
+	grpcserver "github.com/andrea20024/go-musthave-shortener-tpl/internal/grpcserver"
 	handlers "github.com/andrea20024/go-musthave-shortener-tpl/internal/handler"
 	logger "github.com/andrea20024/go-musthave-shortener-tpl/internal/logger"
 	storage "github.com/andrea20024/go-musthave-shortener-tpl/internal/repository"
@@ -202,12 +202,11 @@ func Start(config *config.Config) {
 	}()
 
 	// Start gRPC server
-	go func() {
-		sugar.Infow("Starting gRPC server", "addr", config.GRPCPort)
-		if err := grpc.StartGRPCServer(config.GRPCPort, repo, config.BaseURL); err != nil {
-			sugar.Errorf("gRPC server error: %v", err)
-		}
-	}()
+	sugar.Infow("Starting gRPC server", "addr", config.GRPCPort)
+	grpcSrv, err := grpcserver.StartGRPCServer(config.GRPCPort, repo, config.BaseURL)
+	if err != nil {
+		sugar.Fatalf("gRPC server error: %v", err)
+	}
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
@@ -222,6 +221,7 @@ func Start(config *config.Config) {
 		sugar.Errorf("Server forced to shutdown: %v", err)
 	}
 
+	grpcSrv.GracefulStop()
 	worker.Shutdown()
 	notifier.Stop()
 

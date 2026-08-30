@@ -86,3 +86,18 @@ func verify(s string) bool {
 	}
 	return hmac.Equal([]byte(parts[1]), []byte(mac(parts[0])))
 }
+
+// VerifyToken verifies the HMAC signature of a token and returns the user ID.
+func VerifyToken(token string) (string, bool) {
+	if token == "" {
+		return "", false
+	}
+	parts := strings.SplitN(token, "|", 2)
+	if len(parts) != 2 {
+		return "", false
+	}
+	if !verify(token) {
+		return "", false
+	}
+	return parts[0], true
+}
