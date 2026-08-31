@@ -153,3 +153,18 @@ func (r *MapRepository) IsDeletedError(err error) bool {
 func (r *MapRepository) Shutdown() error {
 	return nil
 }
+
+// Stats returns the count of non-deleted URLs and distinct users.
+func (r *MapRepository) Stats() (int, int, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	urls := 0
+	for key := range r.dict {
+		if !r.deleted[key] {
+			urls++
+		}
+	}
+
+	return urls, len(r.userUrls), nil
+}

@@ -11,10 +11,9 @@
 package handlers
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -109,7 +108,7 @@ func PostHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 	defer req.Body.Close()
 	url := string(body)
 
-	shortURL, err := GenerateShortURL()
+	shortURL, err := auth.GenerateShortURL()
 	if err != nil {
 		http.Error(w, "Generate url failed", http.StatusInternalServerError)
 		return
@@ -167,7 +166,7 @@ func JSONHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 
 	url := inputBody.URL
 
-	shortURL, err := GenerateShortURL()
+	shortURL, err := auth.GenerateShortURL()
 	if err != nil {
 		http.Error(w, "Generate url failed", http.StatusInternalServerError)
 		return
@@ -235,17 +234,6 @@ func PingHandler(w http.ResponseWriter, req *http.Request, repo storage.Reposito
 	w.WriteHeader(http.StatusOK)
 }
 
-// GenerateShortURL generates a cryptographically secure random short URL key
-// using 6 bytes from crypto/rand, encoded as URL-safe base64.
-func GenerateShortURL() (string, error) {
-	b := make([]byte, 6)
-	_, err := rand.Read(b)
-	if err != nil {
-		return "", err
-	}
-	return base64.URLEncoding.EncodeToString(b)[:8], nil
-}
-
 // BatchHandler handles batch URL shortening via JSON POST requests.
 //
 // Expected URL pattern: POST /api/shorten/batch with a JSON array body:
@@ -277,7 +265,7 @@ func BatchHandler(w http.ResponseWriter, req *http.Request, config *config.Confi
 	urls := make(map[string]string)
 	userID, _ := getUserID(req)
 	for _, input := range batchInputs {
-		shortURL, err := GenerateShortURL()
+		shortURL, err := auth.GenerateShortURL()
 		if err != nil {
 			http.Error(w, "Generate url failed", http.StatusInternalServerError)
 			return
@@ -342,7 +330,7 @@ func GetURLByUserHandler(w http.ResponseWriter, req *http.Request, config *confi
 
 	for i := range urls {
 		if !strings.Contains(urls[i].ShortURL, "://") {
-			urls[i].ShortURL = config.BaseURL + "/" + urls[i].ShortURL
+			urls[i].ShortURL = auth.BuildShortURL(config.BaseURL, urls[i].ShortURL)
 		}
 	}
 
@@ -401,4 +389,50 @@ func DeleteURLsHandler(w http.ResponseWriter, req *http.Request, config *config.
 	}
 
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// StatsHandler handles GET requests to /api/internal/stats.
+//
+// Expected URL pattern: GET /api/internal/stats
+// Returns HTTP 200 OK with a JSON body containing {"urls": <int>, "users": <int>}.
+// Returns HTTP 403 Forbidden if the client IP is not in the trusted subnet
+// or if trustedSubnet is empty or if X-Real-IP header is missing.
+func StatsHandler(w http.ResponseWriter, req *http.Request, repo storage.Repository, trustedSubnet string) {
+	if req.Method != http.MethodGet {
+		http.Error(w, "Only GET method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if trustedSubnet == "" {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	_, cidr, err := net.ParseCIDR(trustedSubnet)
+	if err != nil {
+		http.Error(w, "Invalid CIDR", http.StatusBadRequest)
+		return
+	}
+
+	realIP := req.Header.Get("X-Real-IP")
+	clientIP := net.ParseIP(realIP)
+	if clientIP == nil {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	if !cidr.Contains(clientIP) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	urls, users, err := repo.Stats()
+	if err != nil {
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]int{"urls": urls, "users": users})
 }

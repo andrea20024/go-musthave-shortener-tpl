@@ -274,6 +274,21 @@ func (r *FileRepository) Shutdown() error {
 	return nil
 }
 
+// Stats returns the count of non-deleted URLs and distinct users.
+func (r *FileRepository) Stats() (int, int, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	urls := 0
+	for key := range r.dict {
+		if !r.deleted[key] {
+			urls++
+		}
+	}
+
+	return urls, len(r.userUrls), nil
+}
+
 // writeFile appends a single event to the storage file.
 func (r *FileRepository) writeFile(event *Event) error {
 	file, err := os.OpenFile(r.filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
