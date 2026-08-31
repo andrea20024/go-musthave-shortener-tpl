@@ -37,7 +37,7 @@ func Test_GetHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			shortURL, err := GenerateShortURL()
+			shortURL, err := auth.GenerateShortURL()
 			if err != nil {
 				return
 			}
@@ -150,8 +150,8 @@ func TestGetURLByUserHandler(t *testing.T) {
 
 	repo := storage.NewMapRepository()
 
-	short1, _ := GenerateShortURL()
-	short2, _ := GenerateShortURL()
+	short1, _ := auth.GenerateShortURL()
+	short2, _ := auth.GenerateShortURL()
 	repo.Add(short1, "https://example.com/1", "user123")
 	repo.Add(short2, "https://example.com/2", "user123")
 
@@ -220,7 +220,7 @@ func TestDeleteURLsHandler(t *testing.T) {
 	worker := NewWorker(10, repo)
 	defer worker.Shutdown()
 
-	short1, _ := GenerateShortURL()
+	short1, _ := auth.GenerateShortURL()
 	repo.Add(short1, "https://example.com/1", "user123")
 
 	tests := []struct {
@@ -291,7 +291,7 @@ func TestDeleteURLsHandler_NoWorker(t *testing.T) {
 
 	repo := storage.NewMapRepository()
 
-	short1, _ := GenerateShortURL()
+	short1, _ := auth.GenerateShortURL()
 	repo.Add(short1, "https://example.com/1", "user123")
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/user/urls", bytes.NewBufferString(`["`+short1+`"]`))
@@ -321,8 +321,8 @@ func TestWorker_NewWorker(t *testing.T) {
 func TestWorker_SubmitAndShutdown(t *testing.T) {
 	repo := storage.NewMapRepository()
 
-	key1, _ := GenerateShortURL()
-	key2, _ := GenerateShortURL()
+	key1, _ := auth.GenerateShortURL()
+	key2, _ := auth.GenerateShortURL()
 	repo.Add(key1, "https://example.com/1", "user1")
 	repo.Add(key2, "https://example.com/2", "user1")
 
@@ -372,11 +372,11 @@ func TestWorker_Submit_FullQueue(t *testing.T) {
 }
 
 func TestGenerateShortURL(t *testing.T) {
-	url1, err := GenerateShortURL()
+	url1, err := auth.GenerateShortURL()
 	assert.NoError(t, err)
 	assert.Len(t, url1, 8)
 
-	url2, err := GenerateShortURL()
+	url2, err := auth.GenerateShortURL()
 	assert.NoError(t, err)
 	assert.Len(t, url2, 8)
 
@@ -428,4 +428,99 @@ func (m *mockRepoForPing) Shutdown() error {
 
 func (m *mockRepoForPing) Stats() (int, int, error) {
 	return 0, 0, nil
+}
+
+func TestStatsHandler(t *testing.T) {
+	repo := storage.NewMapRepository()
+
+	// Add some data for stats
+	_, _ = auth.GenerateShortURL()
+	repo.Add("abc12345", "https://example.com/1", "user1")
+	repo.Add("def67890", "https://example.com/2", "user1")
+	repo.Add("ghi11111", "https://example.com/3", "user2")
+
+	tests := []struct {
+		name          string
+		trustedSubnet string
+		xRealIP       string
+		wantStatus    int
+		wantBody      string
+	}{
+		{
+			name:          "trusted IP returns 200 with stats",
+			trustedSubnet: "10.0.0.0/8",
+			xRealIP:       "10.1.2.3",
+			wantStatus:    http.StatusOK,
+			wantBody: `{"urls":3,"users":2}
+`,
+		},
+		{
+			name:          "untrusted IP returns 403",
+			trustedSubnet: "10.0.0.0/8",
+			xRealIP:       "192.168.1.1",
+			wantStatus:    http.StatusForbidden,
+			wantBody:      "Forbidden\n",
+		},
+		{
+			name:          "empty trusted subnet returns 403",
+			trustedSubnet: "",
+			xRealIP:       "10.1.2.3",
+			wantStatus:    http.StatusForbidden,
+			wantBody:      "Forbidden\n",
+		},
+		{
+			name:          "missing X-Real-IP returns 403",
+			trustedSubnet: "10.0.0.0/8",
+			xRealIP:       "",
+			wantStatus:    http.StatusForbidden,
+			wantBody:      "Forbidden\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/api/internal/stats", nil)
+			if tt.xRealIP != "" {
+				req.Header.Set("X-Real-IP", tt.xRealIP)
+			}
+			w := httptest.NewRecorder()
+
+			StatsHandler(w, req, repo, tt.trustedSubnet)
+			res := w.Result()
+			defer res.Body.Close()
+
+			assert.Equal(t, tt.wantStatus, res.StatusCode)
+			body := new(bytes.Buffer)
+			body.ReadFrom(res.Body)
+			assert.Equal(t, tt.wantBody, body.String())
+		})
+	}
+}
+
+func TestStatsHandler_InvalidCIDR(t *testing.T) {
+	repo := storage.NewMapRepository()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/internal/stats", nil)
+	req.Header.Set("X-Real-IP", "10.1.2.3")
+	w := httptest.NewRecorder()
+
+	StatsHandler(w, req, repo, "not-a-valid-cidr")
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+}
+
+func TestStatsHandler_PostMethod(t *testing.T) {
+	repo := storage.NewMapRepository()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/internal/stats", nil)
+	req.Header.Set("X-Real-IP", "10.1.2.3")
+	w := httptest.NewRecorder()
+
+	StatsHandler(w, req, repo, "10.0.0.0/8")
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusMethodNotAllowed, res.StatusCode)
 }

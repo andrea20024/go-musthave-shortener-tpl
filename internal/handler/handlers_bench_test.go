@@ -8,18 +8,19 @@ import (
 	"testing"
 
 	audit "github.com/andrea20024/go-musthave-shortener-tpl/internal/audit"
+	auth "github.com/andrea20024/go-musthave-shortener-tpl/internal/auth"
 	config "github.com/andrea20024/go-musthave-shortener-tpl/internal/config"
 	storage "github.com/andrea20024/go-musthave-shortener-tpl/internal/repository"
 )
 
 // ============================================================================
-// Benchmarks для GenerateShortURL
+// Benchmarks для auth.GenerateShortURL
 // ============================================================================
 
 func BenchmarkGenerateShortURL(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
-		_, _ = GenerateShortURL()
+		_, _ = auth.GenerateShortURL()
 	}
 }
 
@@ -126,7 +127,7 @@ func BenchmarkGetUserURLs(b *testing.B) {
 
 	// Наполняем репозиторий до бенчмарка
 	for i := 0; i < 100; i++ {
-		shortURL, _ := GenerateShortURL()
+		shortURL, _ := auth.GenerateShortURL()
 		repo.Add(shortURL, "https://example.com/user/"+string(rune('a'+i%26)), userID)
 	}
 
@@ -145,7 +146,7 @@ func BenchmarkGetHandler(b *testing.B) {
 	repo := storage.NewMapRepository()
 	notifier := audit.NewNotifier()
 
-	shortURL, _ := GenerateShortURL()
+	shortURL, _ := auth.GenerateShortURL()
 	repo.Add(shortURL, "https://example.com/target", "user-1")
 
 	b.ReportAllocs()
@@ -169,7 +170,7 @@ func BenchmarkMapRepository_Add(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
-		shortURL, _ := GenerateShortURL()
+		shortURL, _ := auth.GenerateShortURL()
 		repo.Add(shortURL, "https://example.com/add-test", "user-add")
 	}
 }
@@ -185,7 +186,7 @@ func BenchmarkMapRepository_ConcurrentAdd(b *testing.B) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			shortURL, _ := GenerateShortURL()
+			shortURL, _ := auth.GenerateShortURL()
 			repo.Add(shortURL, "https://example.com/concurrent", "user-concurrent")
 		}
 	})

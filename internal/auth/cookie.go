@@ -12,6 +12,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"net/http"
 	"strings"
@@ -87,6 +88,19 @@ func verify(s string) bool {
 	return hmac.Equal([]byte(parts[1]), []byte(mac(parts[0])))
 }
 
+func GenerateShortURL() (string, error) {
+	b := make([]byte, 6)
+	_, err := rand.Read(b)
+	if err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(b)[:8], nil
+}
+
+func BuildShortURL(baseURL, shortKey string) string {
+	return baseURL + "/" + shortKey
+}
+
 // VerifyToken verifies the HMAC signature of a token and returns the user ID.
 func VerifyToken(token string) (string, bool) {
 	if token == "" {
@@ -100,4 +114,9 @@ func VerifyToken(token string) (string, bool) {
 		return "", false
 	}
 	return parts[0], true
+}
+
+// SignForTest creates an HMAC-signed token for the given user ID.
+func SignForTest(userID string) string {
+	return sign(userID)
 }

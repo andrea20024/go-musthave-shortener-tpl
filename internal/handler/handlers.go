@@ -11,8 +11,6 @@
 package handlers
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net"
@@ -110,7 +108,7 @@ func PostHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 	defer req.Body.Close()
 	url := string(body)
 
-	shortURL, err := GenerateShortURL()
+	shortURL, err := auth.GenerateShortURL()
 	if err != nil {
 		http.Error(w, "Generate url failed", http.StatusInternalServerError)
 		return
@@ -168,7 +166,7 @@ func JSONHandler(w http.ResponseWriter, req *http.Request, config *config.Config
 
 	url := inputBody.URL
 
-	shortURL, err := GenerateShortURL()
+	shortURL, err := auth.GenerateShortURL()
 	if err != nil {
 		http.Error(w, "Generate url failed", http.StatusInternalServerError)
 		return
@@ -236,17 +234,6 @@ func PingHandler(w http.ResponseWriter, req *http.Request, repo storage.Reposito
 	w.WriteHeader(http.StatusOK)
 }
 
-// GenerateShortURL generates a cryptographically secure random short URL key
-// using 6 bytes from crypto/rand, encoded as URL-safe base64.
-func GenerateShortURL() (string, error) {
-	b := make([]byte, 6)
-	_, err := rand.Read(b)
-	if err != nil {
-		return "", err
-	}
-	return base64.URLEncoding.EncodeToString(b)[:8], nil
-}
-
 // BatchHandler handles batch URL shortening via JSON POST requests.
 //
 // Expected URL pattern: POST /api/shorten/batch with a JSON array body:
@@ -278,7 +265,7 @@ func BatchHandler(w http.ResponseWriter, req *http.Request, config *config.Confi
 	urls := make(map[string]string)
 	userID, _ := getUserID(req)
 	for _, input := range batchInputs {
-		shortURL, err := GenerateShortURL()
+		shortURL, err := auth.GenerateShortURL()
 		if err != nil {
 			http.Error(w, "Generate url failed", http.StatusInternalServerError)
 			return
@@ -343,7 +330,7 @@ func GetURLByUserHandler(w http.ResponseWriter, req *http.Request, config *confi
 
 	for i := range urls {
 		if !strings.Contains(urls[i].ShortURL, "://") {
-			urls[i].ShortURL = config.BaseURL + "/" + urls[i].ShortURL
+			urls[i].ShortURL = auth.BuildShortURL(config.BaseURL, urls[i].ShortURL)
 		}
 	}
 

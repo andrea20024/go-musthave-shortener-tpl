@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 
 	audit "github.com/andrea20024/go-musthave-shortener-tpl/internal/audit"
+	auth "github.com/andrea20024/go-musthave-shortener-tpl/internal/auth"
 	config "github.com/andrea20024/go-musthave-shortener-tpl/internal/config"
 	storage "github.com/andrea20024/go-musthave-shortener-tpl/internal/repository"
 )
@@ -85,7 +86,7 @@ func ExampleGetHandler() {
 	originalURL := "https://yandex.ru"
 
 	// Generate a short URL key
-	shortKey, _ := GenerateShortURL()
+	shortKey, _ := auth.GenerateShortURL()
 	repo.Add(shortKey, originalURL, "test-user")
 
 	// Create a GET request to the short URL

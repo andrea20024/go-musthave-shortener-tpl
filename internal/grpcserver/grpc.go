@@ -12,10 +12,7 @@ package grpc
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
 	"errors"
-	"fmt"
 	"log"
 	"net"
 	"strings"
@@ -105,17 +102,6 @@ func getUserIDFromContext(ctx context.Context) (string, error) {
 	return userID, nil
 }
 
-// GenerateShortURL generates a cryptographically secure random short URL key
-// using 6 bytes from crypto/rand, encoded as URL-safe base64.
-func GenerateShortURL() (string, error) {
-	b := make([]byte, 6)
-	_, err := rand.Read(b)
-	if err != nil {
-		return "", err
-	}
-	return base64.URLEncoding.EncodeToString(b)[:8], nil
-}
-
 // ShortenURL handles URL shortening via gRPC.
 func (s *Server) ShortenURL(ctx context.Context, req *pb.URLShortenRequest) (*pb.URLShortenResponse, error) {
 	if req.Url == "" {
@@ -127,7 +113,7 @@ func (s *Server) ShortenURL(ctx context.Context, req *pb.URLShortenRequest) (*pb
 		return nil, status.Error(codes.Unauthenticated, err.Error())
 	}
 
-	shortURL, err := GenerateShortURL()
+	shortURL, err := auth.GenerateShortURL()
 	if err != nil {
 		return nil, status.Error(codes.Internal, "generate short URL failed")
 	}
@@ -137,7 +123,7 @@ func (s *Server) ShortenURL(ctx context.Context, req *pb.URLShortenRequest) (*pb
 		return nil, status.Error(codes.AlreadyExists, "url already exists")
 	}
 
-	result := fmt.Sprintf("%s/%s", s.baseURL, shortURL)
+	result := auth.BuildShortURL(s.baseURL, shortURL)
 
 	return &pb.URLShortenResponse{Result: result}, nil
 }
@@ -170,7 +156,7 @@ func (s *Server) ListUserURLs(ctx context.Context, _ *emptypb.Empty) (*pb.UserUR
 
 	urls := make([]*pb.URLData, 0, len(userURLs))
 	for _, u := range userURLs {
-		fullURL := fmt.Sprintf("%s/%s", s.baseURL, u.ShortURL)
+		fullURL := auth.BuildShortURL(s.baseURL, u.ShortURL)
 		urls = append(urls, &pb.URLData{
 			ShortUrl:    fullURL,
 			OriginalUrl: u.OriginalURL,
